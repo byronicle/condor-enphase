@@ -1,26 +1,61 @@
-# docker-compose.yml
 services:
+
   influxdb:
     image: influxdb:2
-    ports: ["8086:8086"]
+    ports:
+      - "8086:8086"
     environment:
-      - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=adminpass
-      - DOCKER_INFLUXDB_INIT_ORG=enphase
-      - DOCKER_INFLUXDB_INIT_BUCKET=solar
-      - DOCKER_INFLUXDB_INIT_TOKEN=my-super-secret-token
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_ORG: enphase
+      DOCKER_INFLUXDB_INIT_BUCKET: solar
+      DOCKER_INFLUXDB_INIT_PASSWORD_FILE: /run/secrets/influxdb_admin_password
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN_FILE: /run/secrets/influxdb_admin_token
+    secrets:
+      - influxdb_admin_password
+      - influxdb_admin_token
     volumes:
       - influxdb-data:/var/lib/influxdb2
 
   grafana:
     image: grafana/grafana
-    ports: ["3000:3000"]
+    ports:
+      - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:
       - influxdb
 
+  ingestor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    depends_on:
+      - influxdb
+
+    env_file:
+      - .env
+
+    environment:
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_ORG: enphase
+      INFLUXDB_BUCKET: solar
+
+    # Mount only the *write* token
+    secrets:
+      - influxdb_write_token
+
+    entrypoint: ["sh","-c","export INFLUXDB_TOKEN=$(cat /run/secrets/influxdb_write_token) && exec python main.py"]
+
 volumes:
   influxdb-data:
   grafana-data:
+
+secrets:
+  influxdb_admin_password:
+    file: secrets/influxdb_admin_password.txt
+  influxdb_admin_token:
+    file: secrets/influxdb_admin_token.txt
+  influxdb_write_token:
+    file: secrets/influxdb_token.txt  # <-- your client write token
