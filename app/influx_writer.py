@@ -1,8 +1,8 @@
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+"""This module writes data to InfluxDB"""
 from datetime import datetime, timezone
 from typing import Dict
-
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
 
 class InfluxWriter:
     """
