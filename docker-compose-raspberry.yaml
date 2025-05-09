@@ -68,18 +68,8 @@ services:
 
 volumes:
   influxdb-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /media/byron/DATA/influxdb
   grafana-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /media/byron/DATA/grafana
-  token-volume:                                 # holds the writer token
+  token-volume:                                 # holds the writer token                            # holds the writer token
 
 secrets:
   influxdb_admin_password:
