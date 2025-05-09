@@ -79,7 +79,8 @@ class Settings(BaseSettings):
         description="Installer‑Toolkit bearer token",
     )
 
-    use_https: bool = Field(True, env="ENVOY_USE_HTTPS")  # allow toggling HTTP vs HTTPS
+    # allow toggling HTTP vs HTTPS
+    use_https: bool = Field(True, env="ENVOY_USE_HTTPS")
 
     influxdb_url: str = Field("http://localhost:8086", env="INFLUXDB_URL")
     influxdb_token: str = Field(default_factory=_load_write_token)
@@ -187,7 +188,8 @@ def ingest_loop() -> None:  # pylint: disable=too-many-branches
             try:
                 meters = enphase.get_meter_readings_local()
                 for mtr in meters:
-                    ts = _epoch_to_dt(mtr.get("timestamp") or mtr.get("read_at"))
+                    ts = _epoch_to_dt(mtr.get("timestamp")
+                                      or mtr.get("read_at"))
                     _write(
                         influx,
                         Point("meter_power")
@@ -203,7 +205,48 @@ def ingest_loop() -> None:  # pylint: disable=too-many-branches
             except (requests.RequestException, ValueError) as exc:
                 print(f"meters/readings error: {exc}")
 
-            # (other sections unchanged...)
+            # 4️⃣  /api/v1/production/inverters --------------------
+            try:
+                invs = enphase.get_inverter_production_local()
+                for inv in invs:
+                    ts = _epoch_to_dt(inv.get("lastReportDate"))
+                    _write(
+                        influx,
+                        Point("inverter_power")
+                        .tag("host", SETTINGS.envoy_host)
+                        .tag("serial", inv.get("serialNumber"))
+                        .field("last_w", inv.get("lastReportWatts"))
+                        .field("max_w", inv.get("maxReportWatts"))
+                        .time(ts, WritePrecision.S),
+                    )
+            except (requests.RequestException, ValueError) as exc:
+                print(f"inverter production error: {exc}")
+
+            # 5️⃣  /ivp/livedata/status ----------------------------
+            try:
+                live = enphase.get_live_data_local()
+                meters = live.get("meters", {})
+                ts = _epoch_to_dt(meters.get("last_update"))
+
+                def _g(cat: str, key: str) -> Optional[int]:
+                    return meters.get(cat, {}).get(key)
+
+                _write(
+                    influx,
+                    Point("live_data")
+                    .tag("host", SETTINGS.envoy_host)
+                    .field("pv_mw", _g("pv", "agg_p_mw"))
+                    .field("pv_mva", _g("pv", "agg_s_mva"))
+                    .field("load_mw", _g("load", "agg_p_mw"))
+                    .field("load_mva", _g("load", "agg_s_mva"))
+                    .field("grid_mw", _g("grid", "agg_p_mw"))
+                    .field("grid_mva", _g("grid", "agg_s_mva"))
+                    .field("storage_mw", _g("storage", "agg_p_mw"))
+                    .field("storage_mva", _g("storage", "agg_s_mva"))
+                    .time(ts, WritePrecision.S),
+                )
+            except (requests.RequestException, ValueError) as exc:
+                print(f"livedata error: {exc}")
 
             time.sleep(SETTINGS.poll_interval_seconds)
 
