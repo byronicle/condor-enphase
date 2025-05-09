@@ -45,6 +45,8 @@ jobs:
           echo "# non-secret config" > .env
           # (any other non-secret vars can go here...)
           echo "ENPHASE_LOCAL_TOKEN=${{ secrets.ENPHASE_LOCAL_TOKEN }}" >> .env
+          echo "ENVOY_HOST=${{ secrets.ENVOY_HOST }}" >> .env
+
       # ------------------------------------------------------------------
       # 2) Build the ingestor image for arm64 *on the Pi* and start stack
       # ------------------------------------------------------------------
