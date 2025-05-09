@@ -1,0 +1,59 @@
+name: Deploy to Raspberry Pi
+
+on:
+  # push to main OR click “Run workflow” in the UI
+  push:
+    branches: [main]
+    paths:
+      - '**.py'
+      - 'Dockerfile'
+      - 'docker-compose-raspberry.yaml'
+      - '.github/workflows/deploy-pi.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    # Make sure your runner is registered with these labels:
+    #   actions.runner.labels: self-hosted,raspberry,linux
+    runs-on: [self-hosted, raspberry, linux]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # (Optional) login to a registry if you push images
+      # - name: Docker Hub login
+      #   if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+      #   uses: docker/login-action@v3
+      #   with:
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ------------------------------------------------------------------
+      # 1) Materialise the admin secrets that InfluxDB setup needs
+      # ------------------------------------------------------------------
+      - name: Write InfluxDB admin secrets
+        run: |
+          mkdir -p secrets
+          echo "${{ secrets.INFLUXDB_ADMIN_PASSWORD }}" > secrets/influxdb_admin_password.txt
+          echo "${{ secrets.INFLUXDB_ADMIN_TOKEN }}"    > secrets/influxdb_admin_token.txt
+        shell: bash
+      
+      - name: Write application env file
+        run: |
+          # Create or truncate .env
+          echo "# non-secret config" > .env
+          # (any other non-secret vars can go here...)
+          echo "ENPHASE_LOCAL_TOKEN=${{ secrets.ENPHASE_LOCAL_TOKEN }}" >> .env
+      # ------------------------------------------------------------------
+      # 2) Build the ingestor image for arm64 *on the Pi* and start stack
+      # ------------------------------------------------------------------
+      - name: Build & start stack
+        run: |
+          docker compose -f docker-compose-raspberry.yaml pull
+          docker compose -f docker-compose-raspberry.yaml up -d --build
+        shell: bash
+
+      # (Optional) reclaim space
+      - name: Prune dangling images
+        run: docker image prune -f

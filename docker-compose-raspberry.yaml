@@ -1,0 +1,88 @@
+services:
+
+  influxdb:
+    image: influxdb:2.7-alpine
+    ports: ["8086:8086"]
+
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_ORG: enphase
+      DOCKER_INFLUXDB_INIT_BUCKET: solar
+      DOCKER_INFLUXDB_INIT_PASSWORD_FILE: /run/secrets/influxdb_admin_password
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN_FILE: /run/secrets/influxdb_admin_token
+      QUANTUM_INCREMENT: 1m
+      INFLUX_MONITOR_STORE_ENABLED: false
+
+    secrets:
+      - influxdb_admin_password
+      - influxdb_admin_token
+
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d:ro   # custom init script(s)
+      - influxdb-data:/var/lib/influxdb2        # durable DB storage
+      - token-volume:/token                     # writer token output
+
+    healthcheck:
+      test: ["CMD", "sh", "-c", "[ -f /token/influxdb_write.token ] && influx ping --host http://localhost:8086"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana-oss:10.4.2
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    ports: ["3000:3000"]
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+  ingestor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms: ["linux/arm64"]
+    working_dir: /app
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+    env_file: [.env]
+    environment:
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_ORG: enphase
+      INFLUXDB_BUCKET: solar
+
+    volumes:
+      - token-volume:/token:ro                  # read the generated writer token
+
+    entrypoint:
+      - sh
+      - -c
+      - |
+        # Wait until writer token appears (init script finishes)
+        while [ ! -f /token/influxdb_write.token ]; do sleep 2; done
+        export INFLUXDB_TOKEN=$(cat /token/influxdb_write.token)
+        exec python main.py
+
+volumes:
+  influxdb-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /media/byron/DATA/influxdb
+  grafana-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /media/byron/DATA/grafana
+  token-volume:                                 # holds the writer token
+
+secrets:
+  influxdb_admin_password:
+    file: secrets/influxdb_admin_password.txt
+  influxdb_admin_token:
+    file: secrets/influxdb_admin_token.txt
