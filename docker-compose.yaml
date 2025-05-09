@@ -1,9 +1,9 @@
 services:
 
   influxdb:
-    image: influxdb:2
-    ports:
-      - "8086:8086"
+    image: influxdb:2.7-alpine
+    ports: ["8086:8086"]
+
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: admin
@@ -11,20 +11,30 @@ services:
       DOCKER_INFLUXDB_INIT_BUCKET: solar
       DOCKER_INFLUXDB_INIT_PASSWORD_FILE: /run/secrets/influxdb_admin_password
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN_FILE: /run/secrets/influxdb_admin_token
+
     secrets:
       - influxdb_admin_password
       - influxdb_admin_token
+
     volumes:
-      - influxdb-data:/var/lib/influxdb2
+      - ./init:/docker-entrypoint-initdb.d:ro   # custom init script(s)
+      - influxdb-data:/var/lib/influxdb2        # durable DB storage
+      - token-volume:/token                     # writer token output
+
+    healthcheck:
+      test: ["CMD", "sh", "-c", "[ -f /token/influxdb_write.token ] && influx ping --host http://localhost:8086"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   grafana:
-    image: grafana/grafana
-    ports:
-      - "3000:3000"
+    image: grafana/grafana-oss:10.4.2
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    ports: ["3000:3000"]
     volumes:
       - grafana-data:/var/lib/grafana
-    depends_on:
-      - influxdb
 
   ingestor:
     build:
@@ -32,30 +42,34 @@ services:
       dockerfile: Dockerfile
     working_dir: /app
     depends_on:
-      - influxdb
+      influxdb:
+        condition: service_healthy
 
-    env_file:
-      - .env
-
+    env_file: [.env]
     environment:
       INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_ORG: enphase
       INFLUXDB_BUCKET: solar
 
-    # Mount only the *write* token
-    secrets:
-      - influxdb_write_token
+    volumes:
+      - token-volume:/token:ro                  # read the generated writer token
 
-    entrypoint: ["sh","-c","export INFLUXDB_TOKEN=$(cat /run/secrets/influxdb_write_token) && exec python main.py"]
+    entrypoint:
+      - sh
+      - -c
+      - |
+        # Wait until writer token appears (init script finishes)
+        while [ ! -f /token/influxdb_write.token ]; do sleep 2; done
+        export INFLUXDB_TOKEN=$(cat /token/influxdb_write.token)
+        exec python main.py
 
 volumes:
   influxdb-data:
   grafana-data:
+  token-volume:                                 # holds the writer token
 
 secrets:
   influxdb_admin_password:
     file: secrets/influxdb_admin_password.txt
   influxdb_admin_token:
     file: secrets/influxdb_admin_token.txt
-  influxdb_write_token:
-    file: secrets/influxdb_token.txt  # <-- your client write token
