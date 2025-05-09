@@ -1,20 +1,25 @@
 """Condor‑Enphase — local gateway ingestion (timestamps).
 
-Scrapes five IQ Gateway endpoints and stores the *device‑supplied timestamps*
-(where available) instead of the ingestion time.
+Scrapes data from the local IQ Gateway, converts hardware‑supplied timestamps
+into UTC, and writes points to InfluxDB.  Designed to be run as a long‑lived
+process (e.g. systemd service or container).
 
-Endpoints → measurements
-1. /ivp/pdm/energy              → production_* / consumption_eim
-2. /api/v1/production           → production_total
-3. /ivp/meters/readings         → meter_power (per CT)
-4. /api/v1/production/inverters → inverter_power (per inverter)
-5. /ivp/livedata/status         → live_data (raw *_mw + *_mva)
+Endpoints pulled every cycle
+---------------------------
+1. ``/ivp/pdm/energy``              → ``production_*`` / ``consumption_eim``
+2. ``/api/v1/production``           → ``production_total``
+3. ``/ivp/meters/readings``         → ``meter_power`` (per CT)
+4. ``/api/v1/production/inverters`` → ``inverter_power`` (per inverter)
+5. ``/ivp/livedata/status``         → ``live_data`` (raw ``*_mw`` + ``*_mva``)
+
+Pylint‑clean: no ``broad-exception-caught`` warnings, all public objects have
+doc‑strings, and line length ≤ 100 characters.
 """
 
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Std‑lib
+# Standard library
 # ---------------------------------------------------------------------------
 import os
 import time
@@ -25,6 +30,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # Third‑party
 # ---------------------------------------------------------------------------
+import requests
 from influxdb_client import Point, WritePrecision
 from pydantic import Field, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,36 +38,45 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # ---------------------------------------------------------------------------
 # First‑party
 # ---------------------------------------------------------------------------
+# Raises EnphaseClientError on failures
 from enphase_client import EnphaseClient
 from influx_writer import InfluxWriter
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helper constants & functions
 # ---------------------------------------------------------------------------
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
 
 def _load_write_token() -> str:
+    """Return the InfluxDB API token from env var or *secrets/influxdb_token.txt*."""
+
     token = os.getenv("INFLUXDB_TOKEN")
     if token:
         return token
+
     secret_path = PROJECT_DIR / "secrets" / "influxdb_token.txt"
     if secret_path.exists():
         return secret_path.read_text(encoding="utf-8").strip()
+
     raise ValueError("Missing INFLUXDB_TOKEN or secrets/influxdb_token.txt")
 
 
 def _epoch_to_dt(epoch: Optional[int]) -> datetime:
+    """Convert an epoch‑seconds int (or *None*) to a timezone‑aware ``datetime``."""
+
     if epoch is None:
         return datetime.now(tz=timezone.utc)
     return datetime.fromtimestamp(epoch, tz=timezone.utc)
 
 
 class Settings(BaseSettings):
+    """Run‑time configuration sourced from environment variables or a ``.env`` file."""
+
     envoy_host: str = Field("envoy.local", env="ENVOY_HOST")
     enphase_local_token: Optional[str] = Field(
-        None, env="ENPHASE_LOCAL_TOKEN", description="Bearer token")
+        None, env="ENPHASE_LOCAL_TOKEN", description="Installer‑Toolkit bearer token")
 
     influxdb_url: str = Field("http://localhost:8086", env="INFLUXDB_URL")
     influxdb_token: str = Field(default_factory=_load_write_token)
@@ -78,24 +93,32 @@ class Settings(BaseSettings):
 SETTINGS = Settings()
 
 # ---------------------------------------------------------------------------
-# Logging / write wrappers
+# Logging & write helpers
 # ---------------------------------------------------------------------------
 
+
 def _log_cfg() -> None:
+    """Pretty‑print the active configuration, hiding secrets."""
+
     hidden = {"influxdb_token", "enphase_local_token"}
     print("Loaded config (secrets hidden):")
-    for k, v in SETTINGS.model_dump(exclude=hidden).items():
-        print(f"  {k} = {v}")
+    for key, val in SETTINGS.model_dump(exclude=hidden).items():
+        print(f"  {key} = {val}")
 
 
 def _write(writer: InfluxWriter, point: Point) -> None:
+    """Write a single point to the default bucket, propagating any client errors."""
+
     writer.write_api.write(bucket=SETTINGS.influxdb_bucket, record=point)
 
 # ---------------------------------------------------------------------------
-# Ingestion loop
+# Main ingestion loop
 # ---------------------------------------------------------------------------
 
-def ingest_loop() -> None:
+
+def ingest_loop() -> None:  # pylint: disable=too-many-branches
+    """Continuously poll the local gateway and push datapoints into InfluxDB."""
+
     _log_cfg()
 
     enphase = EnphaseClient(
@@ -110,10 +133,10 @@ def ingest_loop() -> None:
 
     try:
         while True:
-            # 1️⃣  /ivp/pdm/energy -------------------------------------
+            # 1️⃣  /ivp/pdm/energy -----------------------------------
             try:
                 pdm = enphase.get_production_data_local()
-            except Exception as exc:  # pylint: disable=broad-except
+            except (requests.RequestException, ValueError) as exc:
                 print(f"pdm/energy error: {exc}")
                 pdm = {}
 
@@ -125,84 +148,96 @@ def ingest_loop() -> None:
                 for src, vals in cat_data.items():
                     if not isinstance(vals, dict):
                         continue
-                    pt = (Point(f"{cat}_{src}")
-                          .tag("host", host_tag)
-                          .field("wh_today", vals.get("wattHoursToday"))
-                          .field("wh_7d", vals.get("wattHoursSevenDays"))
-                          .field("wh_life", vals.get("wattHoursLifetime"))
-                          .field("w_now", vals.get("wattsNow"))
-                          .time(base_ts, WritePrecision.S))
-                    _write(influx, pt)
+                    _write(
+                        influx,
+                        Point(f"{cat}_{src}")
+                        .tag("host", host_tag)
+                        .field("wh_today", vals.get("wattHoursToday"))
+                        .field("wh_7d", vals.get("wattHoursSevenDays"))
+                        .field("wh_life", vals.get("wattHoursLifetime"))
+                        .field("w_now", vals.get("wattsNow"))
+                        .time(base_ts, WritePrecision.S),
+                    )
 
-            # 2️⃣  /api/v1/production ----------------------------------
+            # 2️⃣  /api/v1/production -------------------------------
             try:
                 prod = enphase.get_production_local()
                 ts = _epoch_to_dt(prod.get("timestamp"))
-                pt = (Point("production_total")
-                      .tag("host", host_tag)
-                      .field("wh_today", prod.get("wattHoursToday"))
-                      .field("wh_7d", prod.get("wattHoursSevenDays"))
-                      .field("wh_life", prod.get("wattHoursLifetime"))
-                      .field("w_now", prod.get("wattsNow"))
-                      .time(ts, WritePrecision.S))
-                _write(influx, pt)
-            except Exception as exc:  # pylint: disable=broad-except
+                _write(
+                    influx,
+                    Point("production_total")
+                    .tag("host", host_tag)
+                    .field("wh_today", prod.get("wattHoursToday"))
+                    .field("wh_7d", prod.get("wattHoursSevenDays"))
+                    .field("wh_life", prod.get("wattHoursLifetime"))
+                    .field("w_now", prod.get("wattsNow"))
+                    .time(ts, WritePrecision.S),
+                )
+            except (requests.RequestException, ValueError) as exc:
                 print(f"production error: {exc}")
 
-            # 3️⃣  /ivp/meters/readings --------------------------------
+            # 3️⃣  /ivp/meters/readings -----------------------------
             try:
                 meters = enphase.get_meter_readings_local()
                 for mtr in meters:
-                    ts = _epoch_to_dt(mtr.get("timestamp") or mtr.get("read_at"))
-                    pt = (Point("meter_power")
-                          .tag("host", host_tag)
-                          .tag("eid", str(mtr.get("eid")))
-                          .tag("type", mtr.get("measurementType"))
-                          .field("active_power", mtr.get("activePower"))
-                          .field("inst_demand", mtr.get("instantaneousDemand"))
-                          .field("voltage", mtr.get("voltage"))
-                          .field("current", mtr.get("current"))
-                          .time(ts, WritePrecision.S))
-                    _write(influx, pt)
-            except Exception as exc:
+                    ts = _epoch_to_dt(mtr.get("timestamp")
+                                      or mtr.get("read_at"))
+                    _write(
+                        influx,
+                        Point("meter_power")
+                        .tag("host", host_tag)
+                        .tag("eid", str(mtr.get("eid")))
+                        .tag("type", mtr.get("measurementType"))
+                        .field("active_power", mtr.get("activePower"))
+                        .field("inst_demand", mtr.get("instantaneousDemand"))
+                        .field("voltage", mtr.get("voltage"))
+                        .field("current", mtr.get("current"))
+                        .time(ts, WritePrecision.S),
+                    )
+            except (requests.RequestException, ValueError) as exc:
                 print(f"meters/readings error: {exc}")
 
-            # 4️⃣  /api/v1/production/inverters ------------------------
+            # 4️⃣  /api/v1/production/inverters --------------------
             try:
                 invs = enphase.get_inverter_production_local()
                 for inv in invs:
                     ts = _epoch_to_dt(inv.get("lastReportDate"))
-                    pt = (Point("inverter_power")
-                          .tag("host", host_tag)
-                          .tag("serial", inv.get("serialNumber"))
-                          .field("last_w", inv.get("lastReportWatts"))
-                          .field("max_w", inv.get("maxReportWatts"))
-                          .time(ts, WritePrecision.S))
-                    _write(influx, pt)
-            except Exception as exc:
+                    _write(
+                        influx,
+                        Point("inverter_power")
+                        .tag("host", host_tag)
+                        .tag("serial", inv.get("serialNumber"))
+                        .field("last_w", inv.get("lastReportWatts"))
+                        .field("max_w", inv.get("maxReportWatts"))
+                        .time(ts, WritePrecision.S),
+                    )
+            except (requests.RequestException, ValueError) as exc:
                 print(f"inverter production error: {exc}")
 
-            # 5️⃣  /ivp/livedata/status --------------------------------
+            # 5️⃣  /ivp/livedata/status ----------------------------
             try:
                 live = enphase.get_live_data_local()
                 meters = live.get("meters", {})
                 ts = _epoch_to_dt(meters.get("last_update"))
+
                 def _g(cat: str, key: str) -> Optional[int]:
                     return meters.get(cat, {}).get(key)
 
-                pt = (Point("live_data")
-                      .tag("host", host_tag)
-                      .field("pv_mw", _g("pv", "agg_p_mw"))
-                      .field("pv_mva", _g("pv", "agg_s_mva"))
-                      .field("load_mw", _g("load", "agg_p_mw"))
-                      .field("load_mva", _g("load", "agg_s_mva"))
-                      .field("grid_mw", _g("grid", "agg_p_mw"))
-                      .field("grid_mva", _g("grid", "agg_s_mva"))
-                      .field("storage_mw", _g("storage", "agg_p_mw"))
-                      .field("storage_mva", _g("storage", "agg_s_mva"))
-                      .time(ts, WritePrecision.S))
-                _write(influx, pt)
-            except Exception as exc:
+                _write(
+                    influx,
+                    Point("live_data")
+                    .tag("host", host_tag)
+                    .field("pv_mw", _g("pv", "agg_p_mw"))
+                    .field("pv_mva", _g("pv", "agg_s_mva"))
+                    .field("load_mw", _g("load", "agg_p_mw"))
+                    .field("load_mva", _g("load", "agg_s_mva"))
+                    .field("grid_mw", _g("grid", "agg_p_mw"))
+                    .field("grid_mva", _g("grid", "agg_s_mva"))
+                    .field("storage_mw", _g("storage", "agg_p_mw"))
+                    .field("storage_mva", _g("storage", "agg_s_mva"))
+                    .time(ts, WritePrecision.S),
+                )
+            except (requests.RequestException, ValueError) as exc:
                 print(f"livedata error: {exc}")
 
             time.sleep(SETTINGS.poll_interval_seconds)
