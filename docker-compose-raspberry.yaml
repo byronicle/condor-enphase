@@ -20,8 +20,8 @@ services:
 
     volumes:
       - ./init:/docker-entrypoint-initdb.d:ro   # custom init script(s)
-      - /media/byron/DATA/influxdb:/var/lib/influxdb2:rw        # durable DB storage
-      - token-volume:/token                     # writer token output
+      - influxdb-data:/var/lib/influxdb2        # durable DB storage
+      - token-volume:/token                     # writer token output                    # writer token output
 
     healthcheck:
       test: ["CMD", "sh", "-c", "[ -f /token/influxdb_write.token ] && influx ping --host http://localhost:8086"]
@@ -36,8 +36,7 @@ services:
         condition: service_healthy
     ports: ["3000:3000"]
     volumes:
-      # ← bind /media/byron/DATA/grafana directly into the container
-      - /media/byron/DATA/grafana:/var/lib/grafana:rw
+      - grafana-data:/var/lib/grafana
 
   ingestor:
     build:
