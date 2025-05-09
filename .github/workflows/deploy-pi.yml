@@ -15,7 +15,7 @@ jobs:
   deploy:
     # Make sure your runner is registered with these labels:
     #   actions.runner.labels: self-hosted,raspberry,linux
-    runs-on: [self-hosted, raspberry, linux]
+    runs-on: [self-hosted]
 
     steps:
       - name: Checkout repo
