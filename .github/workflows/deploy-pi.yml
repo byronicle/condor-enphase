@@ -1,7 +1,14 @@
 name: Deploy to Raspberry Pi
 
 on:
-  # click “Run workflow” in the UI
+  # push to main OR click “Run workflow” in the UI
+  push:
+    branches: [raspberry-pi]
+    paths:
+      - '**.py'
+      - 'Dockerfile'
+      - 'docker-compose-raspberry.yaml'
+      - '.github/workflows/deploy-pi.yml'
   workflow_dispatch:
 
 jobs:
