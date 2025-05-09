@@ -3,3 +3,4 @@ influxdb_client==1.48.0
 pydantic==2.11.4
 pydantic_settings==2.9.1
 python-dotenv==1.1.0
+Requests==2.32.3
