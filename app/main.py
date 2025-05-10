@@ -47,6 +47,7 @@ from influx_writer import InfluxWriter
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
+
 def _load_write_token() -> str:
     """Return the InfluxDB token from env or secrets/influxdb_token.txt."""
     if token := os.getenv("INFLUXDB_TOKEN"):
@@ -212,30 +213,45 @@ def ingest_loop() -> None:
                     )
                     _write(influx, pt)
 
-            # 5️⃣  Live meter snapshot ----------------------------
+            # 5️⃣  Live meter snapshot --------------------------------
             try:
                 live = enphase.get_live_data_local()
             except (requests.RequestException, ValueError) as exc:
                 print(f"livedata error: {exc}")
             else:
-                meters = live.get("meters", {})
-                ts = _epoch_to_dt(meters.get("last_update"))
-                def _g(cat: str, key: str) -> Optional[int]:
-                    return meters.get(cat, {}).get(key)
-                pt = (
-                    Point("live_data")
-                    .tag("host", host_tag)
-                    .field("pv_mw", _g("pv", "agg_p_mw"))
-                    .field("pv_mva", _g("pv", "agg_s_mva"))
-                    .field("load_mw", _g("load", "agg_p_mw"))
-                    .field("load_mva", _g("load", "agg_s_mva"))
-                    .field("grid_mw", _g("grid", "agg_p_mw"))
-                    .field("grid_mva", _g("grid", "agg_s_mva"))
-                    .field("storage_mw", _g("storage", "agg_p_mw"))
-                    .field("storage_mva", _g("storage", "agg_s_mva"))
-                    .time(ts, WritePrecision.S)
-                )
-                _write(influx, pt)
+                conn = live.get("connection", {})
+                state = conn.get("sc_stream", "disabled")
+                if state != "enabled":
+                    # try once to turn on the stream and re-fetch
+                    try:
+                        enphase.enable_live_stream()
+                        live = enphase.get_live_data_local()
+                        conn = live.get("connection", {})
+                        state = conn.get("sc_stream", "disabled")
+                    except (requests.RequestException, ValueError) as exc:
+                        print(f"livedata enable error: {exc}")
+                if state == "enabled":
+                    meters = live.get("meters", {})
+                    ts = _epoch_to_dt(meters.get("last_update"))
+
+                    def _g(cat: str, key: str) -> Optional[int]:
+                        return meters.get(cat, {}).get(key)
+                    pt = (
+                        Point("live_data")
+                        .tag("host", host_tag)
+                        .field("pv_mw", _g("pv", "agg_p_mw"))
+                        .field("pv_mva", _g("pv", "agg_s_mva"))
+                        .field("load_mw", _g("load", "agg_p_mw"))
+                        .field("load_mva", _g("load", "agg_s_mva"))
+                        .field("grid_mw", _g("grid", "agg_p_mw"))
+                        .field("grid_mva", _g("grid", "agg_s_mva"))
+                        .field("storage_mw", _g("storage", "agg_p_mw"))
+                        .field("storage_mva", _g("storage", "agg_s_mva"))
+                        .time(ts, WritePrecision.S)
+                    )
+                    _write(influx, pt)
+                else:
+                    print("Live-data stream disabled; skipping write.")
 
             time.sleep(SETTINGS.poll_interval_seconds)
 
