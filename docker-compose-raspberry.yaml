@@ -74,7 +74,6 @@ services:
     image: tailscale/tailscale:latest
     container_name: ts-grafana
     network_mode: service:grafana
-    hostname: grafana
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
