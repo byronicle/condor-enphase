@@ -74,7 +74,7 @@ services:
     hostname: grafana
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
-      - TS_STATE_DIR: /var/lib/tailscale
+      - TS_STATE_DIR=/var/lib/tailscale
     volumes:
       - tailscale-state:/var/lib/tailscale
     devices:
