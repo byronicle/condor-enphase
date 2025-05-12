@@ -44,7 +44,7 @@ jobs:
       - name: Build & start stack
         run: |
           docker compose pull
-          docker compose -d --build
+          docker compose up -d --build
         shell: bash
 
       # (Optional) reclaim space
