@@ -2,7 +2,8 @@ services:
   influxdb:
     image: influxdb:2.7-alpine
     ports: ["8086:8086"]
-    networks: monitoring
+    networks:
+      - monitoring
 
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
@@ -33,7 +34,8 @@ services:
       influxdb:
         condition: service_healthy
     ports: ["3000:3000"]
-    networks: monitoring
+    networks:
+      - monitoring
 
     volumes:
       - grafana-data:/var/lib/grafana
@@ -42,7 +44,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    networks: monitoring
+    networks:
+      - monitoring
     restart: unless-stopped
     working_dir: /app
     depends_on:
