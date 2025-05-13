@@ -1,2 +1,2 @@
 # condor-enphase
-Grabs data from enphase cloud and stores it, and creates custom graphs. 
+Grabs data from local Enphase Envoy device, stores it, and creates custom graphs. 

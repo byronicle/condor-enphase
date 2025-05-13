@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 from dotenv import load_dotenv
 
-# Load .env for local dev (has no effect in production containers)
+# Load .env for Environment Variables
 load_dotenv()
 
 
@@ -296,6 +296,43 @@ class EnphaseClient:  # pylint: disable=too-many-instance-attributes
         """Detailed consumption report."""
         return self._get("/ivp/meters/reports/consumption")
 
+    def enable_live_stream(self) -> str:
+        """
+        Enable the gateway’s live‑data stream.
+
+        Returns
+        -------
+        str
+            The resulting stream state (``"enabled"`` or ``"disabled"``).
+
+        Raises
+        ------
+        RuntimeError
+            If called when the client is *not* in local‑mode.
+        httpx.HTTPStatusError
+            If the gateway returns a non‑2xx response.
+        """
+        if not self.local_mode:
+            raise RuntimeError(
+                "enable_live_stream is valid only in local mode")
+
+        token = self._ensure_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        payload = {"enable": 1}
+
+        # POST once to turn the stream on
+        resp = self.session.post(
+            "/ivp/livedata/stream",
+            headers=headers,
+            json=payload,
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+
+        return resp.json()
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------

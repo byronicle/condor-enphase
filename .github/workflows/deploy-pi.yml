@@ -1,0 +1,52 @@
+name: Deploy to Raspberry Pi
+
+on:
+  # push to raspberry-pi OR click “Run workflow” in the UI
+  push:
+    branches: [raspberry-pi]
+    paths:
+      - '**.py'
+      - 'Dockerfile'
+      - 'docker-compose-raspberry.yaml'
+      - '.github/workflows/deploy-pi.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 1) Materialise the admin secrets that InfluxDB setup needs
+      # ------------------------------------------------------------------
+      - name: Write InfluxDB admin secrets
+        run: |
+          mkdir -p secrets
+          echo "${{ secrets.INFLUXDB_ADMIN_PASSWORD }}" > secrets/influxdb_admin_password.txt
+          echo "${{ secrets.INFLUXDB_ADMIN_TOKEN }}"    > secrets/influxdb_admin_token.txt
+        shell: bash
+      
+      - name: Write application env file
+        run: |
+          # Create or truncate .env
+          echo "# non-secret config" > .env
+          # (any other non-secret vars can go here...)
+          echo "ENPHASE_LOCAL_TOKEN=${{ secrets.ENPHASE_LOCAL_TOKEN }}" >> .env
+          echo "ENVOY_HOST=${{ secrets.ENVOY_HOST }}" >> .env
+          echo "TS_AUTHKEY=${{ secrets.TS_AUTHKEY_CONTAINER }}" >> .env
+
+      # ------------------------------------------------------------------
+      # 2) Build the ingestor image for arm64 *on the Pi* and start stack
+      # ------------------------------------------------------------------
+      - name: Build & start stack
+        run: |
+          docker compose pull
+          docker compose up -d --build
+        shell: bash
+
+      # (Optional) reclaim space
+      - name: Prune dangling images
+        run: docker image prune -f

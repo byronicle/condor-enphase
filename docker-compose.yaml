@@ -1,8 +1,9 @@
 services:
-
   influxdb:
     image: influxdb:2.7-alpine
     ports: ["8086:8086"]
+    networks:
+      - monitoring
 
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
@@ -28,11 +29,15 @@ services:
       retries: 5
 
   grafana:
-    image: grafana/grafana-oss:10.4.2
+    image: grafana/grafana-oss:12.0.0
     depends_on:
       influxdb:
         condition: service_healthy
     ports: ["3000:3000"]
+    hostname: grafana
+    networks:
+      - monitoring
+
     volumes:
       - grafana-data:/var/lib/grafana
 
@@ -40,6 +45,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    networks:
+      - monitoring
+    restart: unless-stopped
     working_dir: /app
     depends_on:
       influxdb:
@@ -63,10 +71,29 @@ services:
         export INFLUXDB_TOKEN=$(cat /token/influxdb_write.token)
         exec python main.py
 
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: ts-grafana
+    network_mode: service:grafana
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+    restart: unless-stopped
+
+networks:
+  monitoring:
+
 volumes:
   influxdb-data:
   grafana-data:
   token-volume:                                 # holds the writer token
+  tailscale-state:
 
 secrets:
   influxdb_admin_password:
