@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 from dotenv import load_dotenv
 
-# Load .env for local dev (has no effect in production containers)
+# Load .env for Environment Variables
 load_dotenv()
 
 
