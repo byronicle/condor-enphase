@@ -26,11 +26,6 @@ variable "repo_name" {
   description = "Cloud Source Repository name to clone in the VM"
 }
 
-variable "service_account_email" {
-  type        = string
-  description = "Service account email used by the VM to access the source repo"
-}
-
 // port for application HTTP ingress
 variable "app_port" {
   type        = number

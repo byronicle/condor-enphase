@@ -12,7 +12,6 @@ module "infra" {
   repo_name             = var.repo_name
   zone                  = var.zone
   region                = var.region
-  service_account_email = module.sourcerepo.vm_sa_email
   depends_on            = [module.sourcerepo]
 }
 
