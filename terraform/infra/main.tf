@@ -1,10 +1,10 @@
 module "service_accounts" {
   source  = "terraform-google-modules/service-accounts/google"
 
-  project_id    = module.condor-enphase.project_id
+  project_id    = var.project_id
   names         = ["enphase-vm"]
   project_roles = [
-    "${module.condor-enphase.project_id}=>roles/source.reader"
+    "${var.project_id}=>roles/source.reader"
   ]
   display_name  = "GitHub Actions Service Account"
   description   = "GitHub Actions Service Account"

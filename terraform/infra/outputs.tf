@@ -4,6 +4,6 @@ output "instance_ip" {
 }
 
 output "service_account_email" {
-  value       = var.service_account_email
+  value       = module.service_accounts.email["enphase-vm"]
   description = "Service account email used by the VM for source repo access"
 }
