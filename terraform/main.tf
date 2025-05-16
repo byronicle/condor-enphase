@@ -16,7 +16,7 @@ module "infra" {
 }
 
 // Cloud Source Repository resource name
-output "repo_name" {
-  description = "Cloud Source Repository name created"
-  value       = module.sourcerepo.repo_name
-}
+# output "repo_name" {
+#   description = "Cloud Source Repository name created"
+#   value       = module.sourcerepo.repo_name
+# }
