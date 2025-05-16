@@ -3,6 +3,9 @@ name: Push to Cloud Source Repository
 on:
   push:
     branches: [ main, google-cloud ]
+permissions:
+  id-token: write
+  contents: read
 
 env:
   GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
