@@ -19,7 +19,7 @@ jobs:
         uses: google-github-actions/auth@v1
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account_email: ${{ secrets.GCP_SA_EMAIL }}
+          service_account:        ${{ secrets.GCP_SA_EMAIL }}
           export_default_credentials: true
 
       - name: Set up Cloud SDK
