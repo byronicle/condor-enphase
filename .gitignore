@@ -15,3 +15,49 @@ venv.bak/
 # Secrets
 secrets/
 enphase_token.json
+
+# Local Terraform directories
+terraform/.terraform/
+
+# Terraform state files
+terraform/*.tfstate
+terraform/*.tfstate.*
+
+# Crash log
+terraform/crash.log
+
+# CLI-generated plan files
+terraform/*.tfplan
+
+# Override files (for local tweaks)
+terraform/override.tf
+terraform/override.tf.json
+terraform/*_override.tf
+terraform/*_override.tf.json
+
+# Variable definitions (often contain secrets)
+terraform/*.tfvars
+terraform/*.tfvars.json
+terraform/override.tfvars
+terraform/*_override.tfvars
+
+# CLI configuration (if you keep a personal RC file)
+terraform/.terraformrc
+terraform/terraform.rc
+
+# Terragrunt cache (if using Terragrunt)
+terraform/.terragrunt-cache/
+
+# Ignore editor/editorplugin files
+*.swp
+*~
+.vscode/
+.idea/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# — KEEP THIS! Terraform lockfile records provider versions —
+# .terraform.lock.hc
+terraform/backend.tf
