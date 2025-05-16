@@ -7,11 +7,13 @@ variable "project_id" {
 variable "region" {
   type        = string
   description = "The GCP region"
+  default     = "us-west1"
 }
 
 variable "zone" {
   type        = string
   description = "The GCP zone"
+  default     = "us-west1-a"
 }
 
 // Cloud Source Repository name for deploying the application
@@ -19,10 +21,4 @@ variable "repo_name" {
   type        = string
   description = "Cloud Source Repository name to provision and clone"
   default     = "condor-enphase-app"
-}
-
-// email of the service account to attach to the VM for Cloud Source access
-variable "service_account_email" {
-  type        = string
-  description = "GCP service account email to attach to the compute instance"
 }
