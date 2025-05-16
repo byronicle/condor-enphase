@@ -15,8 +15,8 @@ jobs:
   sync-to-gcp:
     runs-on: ubuntu-latest
     env:
-      TF_VAR_project_id: ${{ env.GCP_PROJECT }}
-      TF_VAR_repo_name: ${{ env.CSR_NAME }}
+      TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+      TF_VAR_repo_name: ${{ secrets.CSR_NAME }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
