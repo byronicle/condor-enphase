@@ -3,7 +3,11 @@
 module "sourcerepo" {
   source     = "./sourcerepo"
   project_id = var.project_id
+  project_number = var.project_number
   repo_name  = var.repo_name
+  installation_id = var.installation_id
+  github_pat = var.github_pat
+  
 }
 
 module "infra" {
