@@ -17,6 +17,9 @@ jobs:
     env:
       TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
       TF_VAR_repo_name: ${{ secrets.CSR_NAME }}
+      TF_VAR_project_number: ${{ secrets.GCP_PROJECT_NUMBER }}
+      TF_VAR_github_token: ${{ secrets.GH_TOKEN }}
+      TF_VAR_installation_id: ${{ secrets.GH_GCP_APP_INSTALLATION_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -45,12 +48,3 @@ jobs:
       - name: Terraform Apply (Cloud Source Repo)
         run: terraform apply -target=module.sourcerepo --auto-approve
         working-directory: terraform
-
-      - name: Add GCP remote
-        run: |
-          git remote add google \
-            https://source.developers.google.com/p/${GCP_PROJECT}/r/${CSR_NAME}
-
-      - name: Push to Cloud Source Repositories
-        run: |
-          git push --all google --force
