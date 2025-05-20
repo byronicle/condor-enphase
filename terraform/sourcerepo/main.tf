@@ -3,17 +3,27 @@
 
 // Create a secret containing the personal access token and grant permissions to the Service Agent
 resource "google_secret_manager_secret" "github_token_secret" {
-    project = var.project_id
-    secret_id = var.secret_id
+  project   = var.project_id
+  secret_id = var.secret_id
 
-    replication {
-        auto {}
-    }
+  replication {
+    auto {}
+  }
+
+  # never destroy the secret itself
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_secret_manager_secret_version" "github_token_secret_version" {
-    secret = google_secret_manager_secret.github_token_secret.id
-    secret_data = var.github_pat
+  secret      = google_secret_manager_secret.github_token_secret.id
+  secret_data = var.github_pat
+
+  # after initial creation, ignore any further changes to secret_data
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
 
 data "google_iam_policy" "serviceagent_secretAccessor" {
