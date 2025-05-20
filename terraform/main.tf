@@ -10,14 +10,14 @@ module "sourcerepo" {
   
 }
 
-module "infra" {
-  source                = "./infra"
-  project_id            = var.project_id
-  repo_name             = var.repo_name
-  zone                  = var.zone
-  region                = var.region
-  depends_on            = [module.sourcerepo]
-}
+# module "infra" {
+#   source                = "./infra"
+#   project_id            = var.project_id
+#   repo_name             = var.repo_name
+#   zone                  = var.zone
+#   region                = var.region
+#   depends_on            = [module.sourcerepo]
+# }
 
 // Cloud Source Repository resource name
 # output "repo_name" {
