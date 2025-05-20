@@ -60,4 +60,4 @@ Thumbs.db
 
 # — KEEP THIS! Terraform lockfile records provider versions —
 # .terraform.lock.hc
-terraform/backend.tf
+# terraform/backend.tf

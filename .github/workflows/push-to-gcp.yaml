@@ -44,10 +44,7 @@ jobs:
           terraform_version: 1.5.0
 
       - name: Terraform Init
-        run: |
-          terraform init -reconfigure \
-            -backend-config="bucket=${TF_STATE_BUCKET}" \
-            -backend-config="prefix=${TF_STATE_PREFIX}"
+        run: terraform init -reconfigure
         working-directory: terraform
 
       - name: Terraform Apply (Cloud Source Repo)
