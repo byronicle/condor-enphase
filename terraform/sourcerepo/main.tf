@@ -60,5 +60,5 @@ resource "google_cloudbuildv2_repository" "my_repository" {
       location = var.region
       name = var.repo_name 
       parent_connection = google_cloudbuildv2_connection.my_connection.name
-      remote_uri = "URI"
+      remote_uri = "https://github.com/byronicle/condor-enphase.git"
   }
