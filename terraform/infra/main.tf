@@ -1,13 +1,13 @@
 module "service_accounts" {
-  source  = "terraform-google-modules/service-accounts/google"
+  source = "terraform-google-modules/service-accounts/google"
 
-  project_id    = var.project_id
-  names         = ["enphase-vm"]
+  project_id = var.project_id
+  names      = ["enphase-vm"]
   project_roles = [
     "${var.project_id}=>roles/source.reader"
   ]
-  display_name  = "GitHub Actions Service Account"
-  description   = "GitHub Actions Service Account"
+  display_name = "GitHub Actions Service Account"
+  description  = "GitHub Actions Service Account"
 }
 
 resource "google_compute_instance" "enphase" {
@@ -23,13 +23,13 @@ resource "google_compute_instance" "enphase" {
   }
 
   network_interface {
-    network       = "default"
-    access_config {}  # external IP
+    network = "default"
+    access_config {} # external IP
   }
 
   # attach service account for Cloud Source Repository access
   service_account {
-    email  = module.service_accounts.email["enphase-vm"]
+    email = module.service_accounts.email["enphase-vm"]
     scopes = [
       "https://www.googleapis.com/auth/cloud-platform",
       "https://www.googleapis.com/auth/source.read_only"
@@ -40,6 +40,77 @@ resource "google_compute_instance" "enphase" {
   metadata_startup_script = templatefile(
     "${path.module}/startup.sh.tpl",
     { project_id = var.project_id,
-      repo_name  = var.repo_name }
+    repo_name = var.repo_name }
   )
+}
+
+# GCP Secret Manager secrets for VM application
+resource "google_secret_manager_secret" "enphase_local_token" {
+  project   = var.project_id
+  secret_id = "ENPHASE_LOCAL_TOKEN"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "enphase_local_token_version" {
+  secret      = google_secret_manager_secret.enphase_local_token.id
+  secret_data = var.enphase_local_token
+}
+
+resource "google_secret_manager_secret" "envoy_host" {
+  project   = var.project_id
+  secret_id = "ENVOY_HOST"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "envoy_host_version" {
+  secret      = google_secret_manager_secret.envoy_host.id
+  secret_data = var.envoy_host
+}
+
+resource "google_secret_manager_secret" "ts_authkey" {
+  project   = var.project_id
+  secret_id = "TS_AUTHKEY"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "ts_authkey_version" {
+  secret      = google_secret_manager_secret.ts_authkey.id
+  secret_data = var.ts_authkey
+}
+
+resource "google_secret_manager_secret" "influxdb_admin_password" {
+  project   = var.project_id
+  secret_id = "influxdb_admin_password"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "influxdb_admin_password_version" {
+  secret      = google_secret_manager_secret.influxdb_admin_password.id
+  secret_data = var.influxdb_admin_password
+}
+
+resource "google_secret_manager_secret" "influxdb_admin_token" {
+  project   = var.project_id
+  secret_id = "influxdb_admin_token"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "influxdb_admin_token_version" {
+  secret      = google_secret_manager_secret.influxdb_admin_token.id
+  secret_data = var.influxdb_admin_token
 }
