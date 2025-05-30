@@ -2,7 +2,13 @@
 [![Work in Progress](https://img.shields.io/badge/status-work--in--progress-orange)](#)
 > ⚠️ This project is currently under active development. Expect breaking changes.
 
-A Python application that fetches solar production and consumption data from a local Enphase Envoy device, writes time-series metrics to InfluxDB, and offers customizable graphing and dashboard options.
+A Python application that fetches solar production and consumption data from a local Enphase Envoy device, writes time-series metrics to InfluxDB, and offers customizable graphing and dashboard options. This improves on the graphs provided by Enphase.
+
+## Grafana Dashboard
+![Grafana Dashboard](assets/images/grafana.png)
+
+## Enphase Dashboard
+![Enphase Dashboard](assets/images/enphase-graph.png)
 
 ## Features
 - Real-time polling of Enphase Envoy API for solar and consumption data
