@@ -35,13 +35,14 @@ cd /opt/app
 
 # Create or truncate .env
 echo "# non-secret config" > /opt/app/.env
-echo "ENPHASE_LOCAL_TOKEN=${{ gcloud secrets versions access --secret=ENPHASE_LOCAL_TOKEN }}" >> /opt/app/.env
-echo "ENVOY_HOST=${{ gcloud secrets versions access --secret=ENVOY_HOST }}" >> /opt/app/.env
-echo "TS_AUTHKEY=${{ gcloud secrets versions access --secret=TS_AUTHKEY }}" >> /opt/app/.env
+echo "ENPHASE_LOCAL_TOKEN=$(gcloud secrets versions access --secret=ENPHASE_LOCAL_TOKEN)" >> /opt/app/.env
+echo "ENVOY_HOST=$(gcloud secrets versions access --secret=ENVOY_HOST)" >> /opt/app/.env
+echo "TS_AUTHKEY=$(gcloud secrets versions access --secret=TS_AUTHKEY)" >> /opt/app/.env
 
+# write out secrets to files
 mkdir -p /opt/app/secrets
-echo "${{ gcloud secrets versions access --secret=INFLUXDB_ADMIN_PASSWORD }}" > /opt/app/secrets/influxdb_admin_password.txt
-echo "${{ gcloud secrets versions access --secret=INFLUX_ADMIN_TOKEN }}"    > /opt/app/secrets/influxdb_admin_token.txt
+echo "$(gcloud secrets versions access --secret=INFLUXDB_ADMIN_PASSWORD)" > /opt/app/secrets/influxdb_admin_password.txt
+echo "$(gcloud secrets versions access --secret=INFLUXDB_ADMIN_TOKEN)" > /opt/app/secrets/influxdb_admin_token.txt
 
 # launch containers via docker-compose
 docker-compose up -d /opt/app/docker-compose.yml
