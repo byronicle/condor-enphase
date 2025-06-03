@@ -4,7 +4,7 @@ module "service_accounts" {
   project_id = var.project_id
   names      = ["enphase-vm"]
   project_roles = [
-    "${var.project_id}=>roles/source.reader"
+    "${var.project_id}=>roles/secretmanager.secretAccessor",
   ]
   display_name = "Enphase VM Service Account"
   description  = "Enphase VM Service Account"
