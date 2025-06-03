@@ -29,7 +29,7 @@ resource "google_compute_instance" "enphase" {
 
   # attach service account for Cloud Source Repository access
   service_account {
-    email = module.service_accounts.email["enphase-vm"]
+    email = module.service_accounts.email
     scopes = [
       "https://www.googleapis.com/auth/cloud-platform",
       "https://www.googleapis.com/auth/source.read_only"
