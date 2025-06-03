@@ -113,3 +113,17 @@ resource "google_secret_manager_secret_version" "influxdb_admin_token_version" {
   secret      = google_secret_manager_secret.influxdb_admin_token.id
   secret_data = var.influxdb_admin_token
 }
+
+resource "google_secret_manager_secret" "github_deploy_key" {
+  project   = var.project_id
+  secret_id = "GH_DEPLOY_KEY"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "github_deploy_key_version" {
+  secret      = google_secret_manager_secret.github_deploy_key.id
+  secret_data = var.github_deploy_key
+}

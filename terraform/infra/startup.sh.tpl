@@ -20,7 +20,7 @@ apt-get update && apt-get install -y google-cloud-sdk
 # write out private key
 mkdir -p /root/.ssh
 cat << 'EOF' > /root/.ssh/id_rsa
-${git_private_key}
+$(gcloud secrets versions access --secret=GH_DPLOY_KEY)
 EOF
 chmod 600 /root/.ssh/id_rsa
 
