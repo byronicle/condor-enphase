@@ -6,8 +6,8 @@ module "service_accounts" {
   project_roles = [
     "${var.project_id}=>roles/source.reader"
   ]
-  display_name = "GitHub Actions Service Account"
-  description  = "GitHub Actions Service Account"
+  display_name = "Enphase VM Service Account"
+  description  = "Enphase VM Service Account"
 }
 
 resource "google_compute_instance" "enphase" {
@@ -39,8 +39,7 @@ resource "google_compute_instance" "enphase" {
   # load startup script from external template and interpolate project_id and repo_name
   metadata_startup_script = templatefile(
     "${path.module}/startup.sh.tpl",
-    { project_id = var.project_id,
-    repo_name = var.repo_name }
+    { repo_name = var.github_repo_ssh_url }
   )
 }
 

@@ -8,17 +8,19 @@ apt-get update && apt-get install -y \
   ca-certificates \
   gnupg
 
-# add Google Cloud SDK apt repo
-echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" \
-  | tee /etc/apt/sources.list.d/google-cloud-sdk.list
-curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-  | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
-apt-get update && apt-get install -y google-cloud-sdk
+# write out private key
+mkdir -p /root/.ssh
+cat << 'EOF' > /root/.ssh/id_rsa
+${git_private_key}
+EOF
+chmod 600 /root/.ssh/id_rsa
 
-# clone code from Cloud Source Repository (uses VM service account)
-mkdir -p /opt/app && cd /opt/app
-gcloud config set project ${project_id}
-gcloud source repos clone ${repo_name} .
+# trust GitHub
+ssh-keyscan github.com >> /root/.ssh/known_hosts
+
+# clone your repo
+git clone ${repo_name} /opt/app
+chown -R root:root /opt/app
 
 # launch containers via docker-compose
-docker-compose up -d
+docker-compose up -d /opt/app/docker-compose.yml

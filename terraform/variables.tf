@@ -70,3 +70,15 @@ variable "influxdb_admin_token" {
   description = "InfluxDB admin token"
   sensitive   = true
 }
+
+variable "github_deploy_key" {
+  type        = string
+  description = "GitHub deploy key for the repository"
+  sensitive   = true
+}
+
+variable "github_repo_ssh_url" {
+  type        = string
+  description = "GitHub repository SSH URL for the application"
+  default     = "git@github.com:your-org/condor-enphase-app.git"
+}

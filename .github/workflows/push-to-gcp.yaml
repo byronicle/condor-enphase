@@ -20,6 +20,7 @@ jobs:
       TF_VAR_project_number: ${{ secrets.GCP_PROJECT_NUMBER }}
       TF_VAR_github_pat: ${{ secrets.GH_PAT }}
       TF_VAR_installation_id: ${{ secrets.GH_GCP_APP_INSTALLATION_ID }}
+      TF_VAR_github_deploy_key: ${{ secrets.GH_DEPLOY_KEY }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
       TF_STATE_PREFIX: terraform/state
     steps:
