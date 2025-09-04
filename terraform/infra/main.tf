@@ -56,6 +56,10 @@ resource "google_secret_manager_secret" "enphase_local_token" {
 resource "google_secret_manager_secret_version" "enphase_local_token_version" {
   secret      = google_secret_manager_secret.enphase_local_token.id
   secret_data = var.enphase_local_token
+  
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
 
 resource "google_secret_manager_secret" "envoy_host" {
@@ -70,6 +74,10 @@ resource "google_secret_manager_secret" "envoy_host" {
 resource "google_secret_manager_secret_version" "envoy_host_version" {
   secret      = google_secret_manager_secret.envoy_host.id
   secret_data = var.envoy_host
+  
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
 
 resource "google_secret_manager_secret" "ts_authkey" {
@@ -84,6 +92,10 @@ resource "google_secret_manager_secret" "ts_authkey" {
 resource "google_secret_manager_secret_version" "ts_authkey_version" {
   secret      = google_secret_manager_secret.ts_authkey.id
   secret_data = var.ts_authkey
+  
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
 
 resource "google_secret_manager_secret" "influxdb_admin_password" {
@@ -98,6 +110,10 @@ resource "google_secret_manager_secret" "influxdb_admin_password" {
 resource "google_secret_manager_secret_version" "influxdb_admin_password_version" {
   secret      = google_secret_manager_secret.influxdb_admin_password.id
   secret_data = var.influxdb_admin_password
+  
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
 
 resource "google_secret_manager_secret" "influxdb_admin_token" {
@@ -112,6 +128,10 @@ resource "google_secret_manager_secret" "influxdb_admin_token" {
 resource "google_secret_manager_secret_version" "influxdb_admin_token_version" {
   secret      = google_secret_manager_secret.influxdb_admin_token.id
   secret_data = var.influxdb_admin_token
+  
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
 
 resource "google_secret_manager_secret" "github_deploy_key" {
@@ -126,4 +146,8 @@ resource "google_secret_manager_secret" "github_deploy_key" {
 resource "google_secret_manager_secret_version" "github_deploy_key_version" {
   secret      = google_secret_manager_secret.github_deploy_key.id
   secret_data = var.github_deploy_key
+  
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
 }
