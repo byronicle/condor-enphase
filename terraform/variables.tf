@@ -80,5 +80,5 @@ variable "github_deploy_key" {
 variable "github_repo_ssh_url" {
   type        = string
   description = "GitHub repository SSH URL for the application"
-  default     = "git@github.com:your-org/condor-enphase-app.git"
+  default     = "git@github.com:byronicle/condor-enphase.git"
 }
