@@ -256,29 +256,8 @@ resource "kubernetes_persistent_volume_claim" "tailscale_state" {
   }
 }
 
-resource "kubernetes_persistent_volume_claim" "token_volume" {
-  metadata {
-    name      = "token-volume"
-    namespace = kubernetes_namespace.enphase.metadata[0].name
-  }
-  spec {
-    access_modes = ["ReadWriteMany"]
-    resources {
-      requests = {
-        storage = "1Gi"
-      }
-    }
-    storage_class_name = var.storage_class
-  }
-
-  depends_on = [
-    google_container_node_pool.enphase_nodes
-  ]
-
-  timeouts {
-    create = "10m"
-  }
-}
+# Note: token_volume is now handled as emptyDir in pod specs
+# since ReadWriteMany is not supported by GKE standard storage classes
 
 # ConfigMaps
 resource "kubernetes_config_map" "influxdb_init" {
@@ -373,14 +352,9 @@ resource "kubernetes_deployment" "influxdb" {
             mount_path = "/var/lib/influxdb2"
           }
 
-          volume_mount {
-            name       = "token-volume"
-            mount_path = "/token"
-          }
-
           liveness_probe {
             exec {
-              command = ["sh", "-c", "[ -f /token/influxdb_write.token ] && influx ping --host http://localhost:8086"]
+              command = ["sh", "-c", "influx ping --host http://localhost:8086"]
             }
             initial_delay_seconds = 30
             period_seconds        = 10
@@ -390,7 +364,7 @@ resource "kubernetes_deployment" "influxdb" {
 
           readiness_probe {
             exec {
-              command = ["sh", "-c", "[ -f /token/influxdb_write.token ] && influx ping --host http://localhost:8086"]
+              command = ["sh", "-c", "influx ping --host http://localhost:8086"]
             }
             initial_delay_seconds = 10
             period_seconds        = 10
@@ -405,16 +379,14 @@ resource "kubernetes_deployment" "influxdb" {
             claim_name = kubernetes_persistent_volume_claim.influxdb_data.metadata[0].name
           }
         }
-
-        volume {
-          name = "token-volume"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.token_volume.metadata[0].name
-          }
-        }
       }
     }
   }
+
+  depends_on = [
+    kubernetes_persistent_volume_claim.influxdb_data,
+    time_sleep.wait_for_cluster
+  ]
 }
 
 # InfluxDB Service
@@ -566,6 +538,13 @@ resource "kubernetes_deployment" "grafana" {
       }
     }
   }
+
+  depends_on = [
+    kubernetes_persistent_volume_claim.grafana_data,
+    kubernetes_persistent_volume_claim.tailscale_state,
+    kubernetes_service.influxdb,
+    time_sleep.wait_for_cluster
+  ]
 }
 
 # Grafana Service
@@ -622,20 +601,6 @@ resource "kubernetes_deployment" "ingestor" {
           ]
         }
 
-        init_container {
-          name  = "wait-for-token"
-          image = "busybox:1.35"
-          command = [
-            "sh",
-            "-c",
-            "while [ ! -f /token/influxdb_write.token ]; do sleep 2; done"
-          ]
-          volume_mount {
-            name       = "token-volume"
-            mount_path = "/token"
-            read_only  = true
-          }
-        }
 
         container {
           image = var.ingestor_image
@@ -678,16 +643,14 @@ resource "kubernetes_deployment" "ingestor" {
             }
           }
 
-          command = [
-            "sh",
-            "-c",
-            "export INFLUXDB_TOKEN=$(cat /token/influxdb_write.token) && exec python main.py"
-          ]
-
-          volume_mount {
-            name       = "token-volume"
-            mount_path = "/token"
-            read_only  = true
+          env {
+            name = "INFLUXDB_TOKEN"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.enphase_secrets.metadata[0].name
+                key  = "influxdb_admin_token"
+              }
+            }
           }
         }
 
@@ -739,13 +702,6 @@ resource "kubernetes_deployment" "ingestor" {
         }
 
         volume {
-          name = "token-volume"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.token_volume.metadata[0].name
-          }
-        }
-
-        volume {
           name = "tailscale-ingestor-state"
           empty_dir {}
         }
@@ -759,4 +715,9 @@ resource "kubernetes_deployment" "ingestor" {
       }
     }
   }
+
+  depends_on = [
+    kubernetes_service.influxdb,
+    time_sleep.wait_for_cluster
+  ]
 }

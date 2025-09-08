@@ -51,7 +51,6 @@ output "pvc_names" {
   value = {
     influxdb_data   = kubernetes_persistent_volume_claim.influxdb_data.metadata[0].name
     grafana_data    = kubernetes_persistent_volume_claim.grafana_data.metadata[0].name
-    token_volume    = kubernetes_persistent_volume_claim.token_volume.metadata[0].name
     tailscale_state = kubernetes_persistent_volume_claim.tailscale_state.metadata[0].name
   }
   description = "Names of persistent volume claims created"
