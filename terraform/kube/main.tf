@@ -162,6 +162,52 @@ resource "kubernetes_namespace" "enphase" {
 }
 
 
+# ServiceAccount for Tailscale
+resource "kubernetes_service_account" "tailscale" {
+  metadata {
+    name      = "tailscale"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+}
+
+# Role for Tailscale permissions
+resource "kubernetes_role" "tailscale" {
+  metadata {
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+    name      = "tailscale"
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["secrets"]
+    verbs      = ["create", "get", "update", "patch"]
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["events"]
+    verbs      = ["create", "get", "patch"]
+  }
+}
+
+# RoleBinding for Tailscale
+resource "kubernetes_role_binding" "tailscale" {
+  metadata {
+    name      = "tailscale"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role.tailscale.metadata[0].name
+  }
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account.tailscale.metadata[0].name
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+}
+
 # Kubernetes Secrets
 resource "kubernetes_secret" "enphase_secrets" {
   metadata {
@@ -434,6 +480,8 @@ resource "kubernetes_deployment" "grafana" {
       }
 
       spec {
+        service_account_name = kubernetes_service_account.tailscale.metadata[0].name
+        
         init_container {
           name  = "wait-for-influxdb"
           image = "busybox:1.35"
@@ -497,6 +545,24 @@ resource "kubernetes_deployment" "grafana" {
           env {
             name  = "TS_EXTRA_ARGS"
             value = "--accept-routes"
+          }
+
+          env {
+            name = "POD_NAME"
+            value_from {
+              field_ref {
+                field_path = "metadata.name"
+              }
+            }
+          }
+
+          env {
+            name = "POD_UID"
+            value_from {
+              field_ref {
+                field_path = "metadata.uid"
+              }
+            }
           }
 
           security_context {
@@ -597,6 +663,8 @@ resource "kubernetes_deployment" "ingestor" {
       }
 
       spec {
+        service_account_name = kubernetes_service_account.tailscale.metadata[0].name
+        
         init_container {
           name  = "wait-for-influxdb"
           image = "busybox:1.35"
@@ -688,6 +756,24 @@ resource "kubernetes_deployment" "ingestor" {
           env {
             name  = "TS_EXTRA_ARGS"
             value = "--accept-routes"
+          }
+
+          env {
+            name = "POD_NAME"
+            value_from {
+              field_ref {
+                field_path = "metadata.name"
+              }
+            }
+          }
+
+          env {
+            name = "POD_UID"
+            value_from {
+              field_ref {
+                field_path = "metadata.uid"
+              }
+            }
           }
 
           security_context {
