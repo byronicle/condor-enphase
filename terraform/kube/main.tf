@@ -141,13 +141,23 @@ resource "google_project_iam_member" "gke_node_sa_roles" {
   member  = "serviceAccount:${google_service_account.gke_node_sa.email}"
 }
 
+# Wait for cluster to be fully ready
+resource "time_sleep" "wait_for_cluster" {
+  depends_on = [google_container_node_pool.enphase_nodes]
+  
+  create_duration = "30s"
+}
+
 # Kubernetes namespace
 resource "kubernetes_namespace" "enphase" {
   metadata {
     name = var.namespace
   }
 
-  depends_on = [google_container_node_pool.enphase_nodes]
+  depends_on = [
+    google_container_node_pool.enphase_nodes,
+    time_sleep.wait_for_cluster
+  ]
 }
 
 
@@ -188,6 +198,14 @@ resource "kubernetes_persistent_volume_claim" "influxdb_data" {
     }
     storage_class_name = var.storage_class
   }
+
+  depends_on = [
+    google_container_node_pool.enphase_nodes
+  ]
+
+  timeouts {
+    create = "10m"
+  }
 }
 
 resource "kubernetes_persistent_volume_claim" "grafana_data" {
@@ -203,6 +221,14 @@ resource "kubernetes_persistent_volume_claim" "grafana_data" {
       }
     }
     storage_class_name = var.storage_class
+  }
+
+  depends_on = [
+    google_container_node_pool.enphase_nodes
+  ]
+
+  timeouts {
+    create = "10m"
   }
 }
 
@@ -220,6 +246,14 @@ resource "kubernetes_persistent_volume_claim" "tailscale_state" {
     }
     storage_class_name = var.storage_class
   }
+
+  depends_on = [
+    google_container_node_pool.enphase_nodes
+  ]
+
+  timeouts {
+    create = "10m"
+  }
 }
 
 resource "kubernetes_persistent_volume_claim" "token_volume" {
@@ -235,6 +269,14 @@ resource "kubernetes_persistent_volume_claim" "token_volume" {
       }
     }
     storage_class_name = var.storage_class
+  }
+
+  depends_on = [
+    google_container_node_pool.enphase_nodes
+  ]
+
+  timeouts {
+    create = "10m"
   }
 }
 
