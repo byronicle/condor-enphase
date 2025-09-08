@@ -56,7 +56,7 @@ resource "google_container_cluster" "enphase_cluster" {
 
 # Node pool configuration
 resource "google_container_node_pool" "enphase_nodes" {
-  name       = "${var.cluster_name}-nodes"
+  name       = "${var.cluster_name}-nodes-v2"
   location   = var.zone
   cluster    = google_container_cluster.enphase_cluster.name
   
@@ -119,6 +119,7 @@ resource "google_container_node_pool" "enphase_nodes" {
     max_surge       = 1
     max_unavailable = 0
   }
+
 }
 
 # Service account for GKE nodes
