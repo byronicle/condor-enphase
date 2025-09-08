@@ -13,7 +13,7 @@ variable "cluster_name" {
 variable "node_machine_type" {
   type        = string
   description = "Machine type for GKE nodes"
-  default     = "e2-micro"
+  default     = "e2-small"
 }
 
 variable "node_disk_size" {

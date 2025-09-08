@@ -545,6 +545,11 @@ resource "kubernetes_deployment" "grafana" {
     kubernetes_service.influxdb,
     time_sleep.wait_for_cluster
   ]
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+  }
 }
 
 # Grafana Service
@@ -720,4 +725,9 @@ resource "kubernetes_deployment" "ingestor" {
     kubernetes_service.influxdb,
     time_sleep.wait_for_cluster
   ]
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+  }
 }
