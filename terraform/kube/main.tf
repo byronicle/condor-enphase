@@ -208,6 +208,17 @@ resource "kubernetes_role_binding" "tailscale" {
   }
 }
 
+# Tailscale state secret (empty, will be populated by Tailscale)
+resource "kubernetes_secret" "tailscale" {
+  metadata {
+    name      = "tailscale"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  
+  type = "Opaque"
+  data = {}
+}
+
 # Kubernetes Secrets
 resource "kubernetes_secret" "enphase_secrets" {
   metadata {
