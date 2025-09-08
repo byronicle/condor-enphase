@@ -168,6 +168,10 @@ resource "kubernetes_service_account" "tailscale" {
     name      = "tailscale"
     namespace = kubernetes_namespace.enphase.metadata[0].name
   }
+
+  lifecycle {
+    ignore_changes = [metadata]
+  }
 }
 
 # Role for Tailscale permissions
