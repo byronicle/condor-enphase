@@ -497,6 +497,11 @@ resource "kubernetes_deployment" "grafana" {
       spec {
         service_account_name = kubernetes_service_account.tailscale.metadata[0].name
         
+        # Ensure the mounted PVC gets appropriate ownership for grafana (uid 472)
+        security_context {
+          fs_group = 472
+        }
+        
         init_container {
           name  = "wait-for-influxdb"
           image = "busybox:1.35"
@@ -505,6 +510,24 @@ resource "kubernetes_deployment" "grafana" {
             "-c",
             "until nc -z influxdb 8086; do echo waiting for influxdb; sleep 2; done;"
           ]
+        }
+
+        # Fix permissions on first start (PVC mounts root:root by default on GKE)
+        init_container {
+          name  = "fix-permissions"
+          image = "busybox:1.35"
+          command = [
+            "sh",
+            "-c",
+            "chown -R 472:472 /var/lib/grafana || true"
+          ]
+          security_context {
+            run_as_user = 0
+          }
+          volume_mount {
+            name       = "grafana-data"
+            mount_path = "/var/lib/grafana"
+          }
         }
 
         container {
@@ -518,6 +541,12 @@ resource "kubernetes_deployment" "grafana" {
           volume_mount {
             name       = "grafana-data"
             mount_path = "/var/lib/grafana"
+          }
+
+          security_context {
+            run_as_user    = 472
+            run_as_group   = 472
+            run_as_non_root = true
           }
 
           resources {
