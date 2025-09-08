@@ -53,6 +53,23 @@ jobs:
         run: terraform init
         working-directory: terraform
 
-      - name: Terraform Apply (Cloud Source Repo)
+      - name: Configure Docker to use gcloud as credential helper
+        run: gcloud auth configure-docker gcr.io
+
+      - name: Build Docker image
+        run: |
+          docker build -t gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:${{ github.sha }} .
+          docker build -t gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:${{ github.sha }}
+          docker push gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:latest
+
+      - name: Update Terraform variable with new image
+        run: |
+          echo "TF_VAR_ingestor_image=gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Terraform Apply (GKE Infrastructure)
         run: terraform apply --auto-approve
         working-directory: terraform

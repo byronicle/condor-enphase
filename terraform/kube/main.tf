@@ -1,129 +1,720 @@
-module "service_accounts" {
-  source = "terraform-google-modules/service-accounts/google"
+# GKE Cluster - Zonal Standard (free tier eligible)
+resource "google_container_cluster" "enphase_cluster" {
+  name     = var.cluster_name
+  location = var.zone
 
-  project_id = var.project_id
-  names      = ["enphase-vm"]
-  project_roles = [
-    "${var.project_id}=>roles/secretmanager.secretAccessor",
-  ]
-  display_name = "Enphase VM Service Account"
-  description  = "Enphase VM Service Account"
-}
+  # Minimal configuration for free tier
+  initial_node_count       = 1
+  remove_default_node_pool = true
 
-resource "google_compute_instance" "enphase" {
-  name         = "enphase-vm"
-  machine_type = var.machine_type
-  tags         = ["http-server"]
+  # Network configuration
+  network    = "default"
+  subnetwork = "default"
 
-  boot_disk {
-    initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-minimal-2404-lts-amd64"
-      size  = 30
+  # Enable basic features
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
+    managed_prometheus {
+      enabled = false
     }
   }
 
-  network_interface {
-    network = "default"
-    access_config {} # external IP
+  logging_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
   }
 
-  # attach service account for Cloud Source Repository access
-  service_account {
-    email = module.service_accounts.email
-    scopes = [
+  # Disable expensive features
+  addons_config {
+    network_policy_config {
+      disabled = true
+    }
+    http_load_balancing {
+      disabled = false
+    }
+    horizontal_pod_autoscaling {
+      disabled = true
+    }
+  }
+
+  # Enable workload identity for secure secret access
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  # Security configuration
+  private_cluster_config {
+    enable_private_nodes    = false  # Keep simple for free tier
+    enable_private_endpoint = false
+  }
+
+  # Resource labels
+  resource_labels = {
+    environment = "production"
+    application = "enphase"
+  }
+}
+
+# Node pool configuration
+resource "google_container_node_pool" "enphase_nodes" {
+  name       = "${var.cluster_name}-nodes"
+  location   = var.zone
+  cluster    = google_container_cluster.enphase_cluster.name
+  
+  # Start with minimal nodes for cost
+  initial_node_count = 1
+
+  # Auto-scaling configuration (optional)
+  autoscaling {
+    min_node_count = 1
+    max_node_count = 2
+  }
+
+  # Node management
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+
+  # Node configuration
+  node_config {
+    machine_type = var.node_machine_type
+    disk_size_gb = var.node_disk_size
+    disk_type    = "pd-standard"
+    
+    # Use spot instances for cost savings (optional)
+    spot = var.use_spot_instances
+
+    # Required scopes for workload
+    oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/source.read_only"
+      "https://www.googleapis.com/auth/devstorage.read_only",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring",
     ]
+
+    # Security and resource configuration
+    service_account = google_service_account.gke_node_sa.email
+    
+    # Enable workload identity
+    workload_metadata_config {
+      mode = "GKE_METADATA"
+    }
+
+    # Resource labels
+    labels = {
+      environment = "production"
+      application = "enphase"
+    }
+
+    # Taints for dedicated workload (optional)
+    # taint {
+    #   key    = "enphase-only"
+    #   value  = "true"
+    #   effect = "NO_SCHEDULE"
+    # }
   }
 
-  # load startup script from external template and interpolate project_id and repo_name
-  metadata_startup_script = templatefile(
-    "${path.module}/startup.sh.tpl",
-    { repo_name = var.github_repo_ssh_url }
-  )
-}
-
-# GCP Secret Manager secrets for VM application
-resource "google_secret_manager_secret" "enphase_local_token" {
-  project   = var.project_id
-  secret_id = "ENPHASE_LOCAL_TOKEN"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "enphase_local_token_version" {
-  secret      = google_secret_manager_secret.enphase_local_token.id
-  secret_data = var.enphase_local_token
-}
-
-resource "google_secret_manager_secret" "envoy_host" {
-  project   = var.project_id
-  secret_id = "ENVOY_HOST"
-
-  replication {
-    auto {}
+  # Upgrade settings
+  upgrade_settings {
+    max_surge       = 1
+    max_unavailable = 0
   }
 }
 
-resource "google_secret_manager_secret_version" "envoy_host_version" {
-  secret      = google_secret_manager_secret.envoy_host.id
-  secret_data = var.envoy_host
+# Service account for GKE nodes
+resource "google_service_account" "gke_node_sa" {
+  account_id   = "${var.cluster_name}-node-sa"
+  display_name = "GKE Node Service Account for ${var.cluster_name}"
+  description  = "Service account for GKE nodes in ${var.cluster_name} cluster"
 }
 
-resource "google_secret_manager_secret" "ts_authkey" {
-  project   = var.project_id
-  secret_id = "TS_AUTHKEY"
+# IAM binding for node service account
+resource "google_project_iam_member" "gke_node_sa_roles" {
+  for_each = toset([
+    "roles/logging.logWriter",
+    "roles/monitoring.metricWriter",
+    "roles/monitoring.viewer"
+  ])
+  
+  project = var.project_id
+  role    = each.key
+  member  = "serviceAccount:${google_service_account.gke_node_sa.email}"
+}
 
-  replication {
-    auto {}
+# Kubernetes namespace
+resource "kubernetes_namespace" "enphase" {
+  metadata {
+    name = var.namespace
+  }
+
+  depends_on = [google_container_node_pool.enphase_nodes]
+}
+
+
+# Kubernetes Secrets
+resource "kubernetes_secret" "enphase_secrets" {
+  metadata {
+    name      = "enphase-secrets"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+
+  data = {
+    ENPHASE_LOCAL_TOKEN      = var.enphase_local_token
+    ENVOY_HOST              = var.envoy_host
+    TS_AUTHKEY              = var.ts_authkey
+    influxdb_admin_password = var.influxdb_admin_password
+    influxdb_admin_token    = var.influxdb_admin_token
+  }
+
+  type = "Opaque"
+
+  lifecycle {
+    ignore_changes = [data]
   }
 }
 
-resource "google_secret_manager_secret_version" "ts_authkey_version" {
-  secret      = google_secret_manager_secret.ts_authkey.id
-  secret_data = var.ts_authkey
-}
-
-resource "google_secret_manager_secret" "influxdb_admin_password" {
-  project   = var.project_id
-  secret_id = "influxdb_admin_password"
-
-  replication {
-    auto {}
+# PersistentVolumeClaims
+resource "kubernetes_persistent_volume_claim" "influxdb_data" {
+  metadata {
+    name      = "influxdb-data"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = var.influxdb_storage_size
+      }
+    }
+    storage_class_name = var.storage_class
   }
 }
 
-resource "google_secret_manager_secret_version" "influxdb_admin_password_version" {
-  secret      = google_secret_manager_secret.influxdb_admin_password.id
-  secret_data = var.influxdb_admin_password
-}
-
-resource "google_secret_manager_secret" "influxdb_admin_token" {
-  project   = var.project_id
-  secret_id = "influxdb_admin_token"
-
-  replication {
-    auto {}
+resource "kubernetes_persistent_volume_claim" "grafana_data" {
+  metadata {
+    name      = "grafana-data"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = var.grafana_storage_size
+      }
+    }
+    storage_class_name = var.storage_class
   }
 }
 
-resource "google_secret_manager_secret_version" "influxdb_admin_token_version" {
-  secret      = google_secret_manager_secret.influxdb_admin_token.id
-  secret_data = var.influxdb_admin_token
-}
-
-resource "google_secret_manager_secret" "github_deploy_key" {
-  project   = var.project_id
-  secret_id = "GH_DEPLOY_KEY"
-
-  replication {
-    auto {}
+resource "kubernetes_persistent_volume_claim" "tailscale_state" {
+  metadata {
+    name      = "tailscale-state"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "1Gi"
+      }
+    }
+    storage_class_name = var.storage_class
   }
 }
 
-resource "google_secret_manager_secret_version" "github_deploy_key_version" {
-  secret      = google_secret_manager_secret.github_deploy_key.id
-  secret_data = var.github_deploy_key
+resource "kubernetes_persistent_volume_claim" "token_volume" {
+  metadata {
+    name      = "token-volume"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteMany"]
+    resources {
+      requests = {
+        storage = "1Gi"
+      }
+    }
+    storage_class_name = var.storage_class
+  }
+}
+
+# ConfigMaps
+resource "kubernetes_config_map" "influxdb_init" {
+  metadata {
+    name      = "influxdb-init"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+
+  # You'll need to add your init scripts here
+  # data = {
+  #   "init.sh" = file("${path.module}/init/init.sh")
+  # }
+}
+
+# InfluxDB Deployment
+resource "kubernetes_deployment" "influxdb" {
+  metadata {
+    name      = "influxdb"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+    labels = {
+      app = "influxdb"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "influxdb"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "influxdb"
+        }
+      }
+
+      spec {
+        container {
+          image = "influxdb:2.7-alpine"
+          name  = "influxdb"
+
+          port {
+            container_port = 8086
+          }
+
+          env {
+            name  = "DOCKER_INFLUXDB_INIT_MODE"
+            value = "setup"
+          }
+
+          env {
+            name  = "DOCKER_INFLUXDB_INIT_USERNAME"
+            value = "admin"
+          }
+
+          env {
+            name  = "DOCKER_INFLUXDB_INIT_ORG"
+            value = "enphase"
+          }
+
+          env {
+            name  = "DOCKER_INFLUXDB_INIT_BUCKET"
+            value = "solar"
+          }
+
+          env {
+            name = "DOCKER_INFLUXDB_INIT_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.enphase_secrets.metadata[0].name
+                key  = "influxdb_admin_password"
+              }
+            }
+          }
+
+          env {
+            name = "DOCKER_INFLUXDB_INIT_ADMIN_TOKEN"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.enphase_secrets.metadata[0].name
+                key  = "influxdb_admin_token"
+              }
+            }
+          }
+
+          volume_mount {
+            name       = "influxdb-data"
+            mount_path = "/var/lib/influxdb2"
+          }
+
+          volume_mount {
+            name       = "token-volume"
+            mount_path = "/token"
+          }
+
+          liveness_probe {
+            exec {
+              command = ["sh", "-c", "[ -f /token/influxdb_write.token ] && influx ping --host http://localhost:8086"]
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+            timeout_seconds       = 3
+            failure_threshold     = 5
+          }
+
+          readiness_probe {
+            exec {
+              command = ["sh", "-c", "[ -f /token/influxdb_write.token ] && influx ping --host http://localhost:8086"]
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 10
+            timeout_seconds       = 3
+            failure_threshold     = 5
+          }
+        }
+
+        volume {
+          name = "influxdb-data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.influxdb_data.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "token-volume"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.token_volume.metadata[0].name
+          }
+        }
+      }
+    }
+  }
+}
+
+# InfluxDB Service
+resource "kubernetes_service" "influxdb" {
+  metadata {
+    name      = "influxdb"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = kubernetes_deployment.influxdb.metadata[0].labels.app
+    }
+    port {
+      port        = 8086
+      target_port = 8086
+    }
+  }
+}
+
+# Grafana Deployment with Tailscale sidecar
+resource "kubernetes_deployment" "grafana" {
+  metadata {
+    name      = "grafana"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+    labels = {
+      app = "grafana"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "grafana"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "grafana"
+        }
+      }
+
+      spec {
+        init_container {
+          name  = "wait-for-influxdb"
+          image = "busybox:1.35"
+          command = [
+            "sh",
+            "-c",
+            "until nc -z influxdb 8086; do echo waiting for influxdb; sleep 2; done;"
+          ]
+        }
+
+        container {
+          image = "grafana/grafana-oss:12.0.0"
+          name  = "grafana"
+
+          port {
+            container_port = 3000
+          }
+
+          volume_mount {
+            name       = "grafana-data"
+            mount_path = "/var/lib/grafana"
+          }
+
+          resources {
+            requests = {
+              memory = "128Mi"
+              cpu    = "100m"
+            }
+            limits = {
+              memory = "512Mi"
+              cpu    = "500m"
+            }
+          }
+        }
+
+        # Tailscale sidecar
+        container {
+          image = "tailscale/tailscale:latest"
+          name  = "tailscale"
+
+          env {
+            name = "TS_AUTHKEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.enphase_secrets.metadata[0].name
+                key  = "TS_AUTHKEY"
+              }
+            }
+          }
+
+          env {
+            name  = "TS_STATE_DIR"
+            value = "/var/lib/tailscale"
+          }
+
+          env {
+            name  = "TS_HOSTNAME"
+            value = "grafana-k8s"
+          }
+
+          env {
+            name  = "TS_EXTRA_ARGS"
+            value = "--accept-routes"
+          }
+
+          security_context {
+            capabilities {
+              add = ["NET_ADMIN"]
+            }
+          }
+
+          volume_mount {
+            name       = "tailscale-state"
+            mount_path = "/var/lib/tailscale"
+          }
+
+          volume_mount {
+            name       = "dev-net-tun"
+            mount_path = "/dev/net/tun"
+          }
+        }
+
+        volume {
+          name = "grafana-data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.grafana_data.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "tailscale-state"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.tailscale_state.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "dev-net-tun"
+          host_path {
+            path = "/dev/net/tun"
+          }
+        }
+      }
+    }
+  }
+}
+
+# Grafana Service
+resource "kubernetes_service" "grafana" {
+  metadata {
+    name      = "grafana"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = kubernetes_deployment.grafana.metadata[0].labels.app
+    }
+    port {
+      port        = 3000
+      target_port = 3000
+    }
+  }
+}
+
+# Ingestor Deployment
+resource "kubernetes_deployment" "ingestor" {
+  metadata {
+    name      = "ingestor"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+    labels = {
+      app = "ingestor"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "ingestor"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "ingestor"
+        }
+      }
+
+      spec {
+        init_container {
+          name  = "wait-for-influxdb"
+          image = "busybox:1.35"
+          command = [
+            "sh",
+            "-c",
+            "until nc -z influxdb 8086; do echo waiting for influxdb; sleep 2; done;"
+          ]
+        }
+
+        init_container {
+          name  = "wait-for-token"
+          image = "busybox:1.35"
+          command = [
+            "sh",
+            "-c",
+            "while [ ! -f /token/influxdb_write.token ]; do sleep 2; done"
+          ]
+          volume_mount {
+            name       = "token-volume"
+            mount_path = "/token"
+            read_only  = true
+          }
+        }
+
+        container {
+          image = var.ingestor_image
+          name  = "ingestor"
+
+          working_dir = "/app"
+
+          env {
+            name  = "INFLUXDB_URL"
+            value = "http://influxdb:8086"
+          }
+
+          env {
+            name  = "INFLUXDB_ORG"
+            value = "enphase"
+          }
+
+          env {
+            name  = "INFLUXDB_BUCKET"
+            value = "solar"
+          }
+
+          env {
+            name = "ENPHASE_LOCAL_TOKEN"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.enphase_secrets.metadata[0].name
+                key  = "ENPHASE_LOCAL_TOKEN"
+              }
+            }
+          }
+
+          env {
+            name = "ENVOY_HOST"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.enphase_secrets.metadata[0].name
+                key  = "ENVOY_HOST"
+              }
+            }
+          }
+
+          command = [
+            "sh",
+            "-c",
+            "export INFLUXDB_TOKEN=$(cat /token/influxdb_write.token) && exec python main.py"
+          ]
+
+          volume_mount {
+            name       = "token-volume"
+            mount_path = "/token"
+            read_only  = true
+          }
+        }
+
+        # Tailscale sidecar for ingestor to reach home network
+        container {
+          image = "tailscale/tailscale:latest"
+          name  = "tailscale-ingestor"
+
+          env {
+            name = "TS_AUTHKEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.enphase_secrets.metadata[0].name
+                key  = "TS_AUTHKEY"
+              }
+            }
+          }
+
+          env {
+            name  = "TS_STATE_DIR"
+            value = "/var/lib/tailscale"
+          }
+
+          env {
+            name  = "TS_HOSTNAME"
+            value = "ingestor-k8s"
+          }
+
+          env {
+            name  = "TS_EXTRA_ARGS"
+            value = "--accept-routes"
+          }
+
+          security_context {
+            capabilities {
+              add = ["NET_ADMIN"]
+            }
+          }
+
+          volume_mount {
+            name       = "tailscale-ingestor-state"
+            mount_path = "/var/lib/tailscale"
+          }
+
+          volume_mount {
+            name       = "dev-net-tun"
+            mount_path = "/dev/net/tun"
+          }
+        }
+
+        volume {
+          name = "token-volume"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.token_volume.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "tailscale-ingestor-state"
+          empty_dir {}
+        }
+
+        volume {
+          name = "dev-net-tun"
+          host_path {
+            path = "/dev/net/tun"
+          }
+        }
+      }
+    }
+  }
 }

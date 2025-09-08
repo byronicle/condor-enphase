@@ -1,13 +1,31 @@
 variable "zone" {
   type        = string
-  description = "GCP zone for the VM"
+  description = "GCP zone for resources"
   default     = "us-west1-a"
 }
 
-variable "machine_type" {
+variable "cluster_name" {
   type        = string
-  description = "Machine type for the VM"
+  description = "GKE cluster name"
+  default     = "enphase-cluster"
+}
+
+variable "node_machine_type" {
+  type        = string
+  description = "Machine type for GKE nodes"
   default     = "e2-micro"
+}
+
+variable "node_disk_size" {
+  type        = number
+  description = "Disk size in GB for GKE nodes"
+  default     = 20
+}
+
+variable "use_spot_instances" {
+  type        = bool
+  description = "Use spot instances for cost savings (may cause interruptions)"
+  default     = false
 }
 
 variable "project_id" {
@@ -21,16 +39,28 @@ variable "region" {
   default     = "us-west1"
 }
 
-variable "repo_name" {
+variable "ingestor_image" {
   type        = string
-  description = "Cloud Source Repository name to clone in the VM"
+  description = "Docker image for the ingestor application"
+  default     = "gcr.io/your-project/enphase-ingestor:latest"
 }
 
-// port for application HTTP ingress
-variable "app_port" {
-  type        = number
-  description = "Port for HTTP ingress to the application"
-  default     = 80
+variable "storage_class" {
+  type        = string
+  description = "Kubernetes storage class for persistent volumes"
+  default     = "standard"
+}
+
+variable "influxdb_storage_size" {
+  type        = string
+  description = "Storage size for InfluxDB data"
+  default     = "10Gi"
+}
+
+variable "grafana_storage_size" {
+  type        = string
+  description = "Storage size for Grafana data"
+  default     = "5Gi"
 }
 
 // GCP secrets variables
@@ -64,14 +94,8 @@ variable "influxdb_admin_token" {
   sensitive   = true
 }
 
-variable "github_deploy_key" {
+variable "namespace" {
   type        = string
-  description = "GitHub deploy key for the repository"
-  sensitive   = true
-}
-
-variable "github_repo_ssh_url" {
-  type        = string
-  description = "SSH URL of the GitHub repository"
-  default     = "git@github.com:your-org/condor-enphase-app.git"
+  description = "Kubernetes namespace for resources"
+  default     = "enphase"
 }

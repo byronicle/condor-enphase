@@ -21,26 +21,61 @@ variable "zone" {
   default     = "us-west1-a"
 }
 
-// Cloud Source Repository name for deploying the application
-variable "repo_name" {
+// Kubernetes cluster configuration
+variable "cluster_name" {
   type        = string
-  description = "Cloud Source Repository name to provision and clone"
-  default     = "condor-enphase-app"
+  description = "GKE cluster name"
+  default     = "enphase-cluster"
 }
 
-// GitHub App installation ID
-variable "installation_id" {
+variable "node_machine_type" {
   type        = string
-  description = "GitHub App installation ID"
+  description = "Machine type for GKE nodes"
+  default     = "e2-micro"
 }
 
-// GitHub personal access token (PAT) for authentication
-variable "github_pat" {
-  type        = string
-  description = "GitHub personal access token (PAT) for authentication"
+variable "node_disk_size" {
+  type        = number
+  description = "Disk size in GB for GKE nodes"
+  default     = 20
 }
 
-// Secret inputs for infra module
+variable "use_spot_instances" {
+  type        = bool
+  description = "Use spot instances for cost savings (may cause interruptions)"
+  default     = false
+}
+
+variable "storage_class" {
+  type        = string
+  description = "Kubernetes storage class for persistent volumes"
+  default     = "standard"
+}
+
+variable "influxdb_storage_size" {
+  type        = string
+  description = "Storage size for InfluxDB data"
+  default     = "10Gi"
+}
+
+variable "grafana_storage_size" {
+  type        = string
+  description = "Storage size for Grafana data"
+  default     = "5Gi"
+}
+
+variable "ingestor_image" {
+  type        = string
+  description = "Docker image for the ingestor application (e.g., gcr.io/your-project-id/enphase-ingestor:latest)"
+}
+
+variable "namespace" {
+  type        = string
+  description = "Kubernetes namespace for resources"
+  default     = "enphase"
+}
+
+// Secret inputs for kube module
 variable "enphase_local_token" {
   type        = string
   description = "Enphase local token"
@@ -71,14 +106,3 @@ variable "influxdb_admin_token" {
   sensitive   = true
 }
 
-variable "github_deploy_key" {
-  type        = string
-  description = "GitHub deploy key for the repository"
-  sensitive   = true
-}
-
-variable "github_repo_ssh_url" {
-  type        = string
-  description = "GitHub repository SSH URL for the application"
-  default     = "git@github.com:byronicle/condor-enphase.git"
-}
