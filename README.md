@@ -1,29 +1,44 @@
 # condor-enphase
-[![Work in Progress](https://img.shields.io/badge/status-work--in--progress-orange)](#)
-> ⚠️ This project is currently under active development. Expect breaking changes.
 
-A Python application that fetches solar production and consumption data from a local Enphase Envoy device, writes time-series metrics to InfluxDB, and offers customizable graphing and dashboard options. This improves on the graphs provided by Enphase.
+A Python application that fetches solar production and consumption data from a local Enphase Envoy device, writes time-series metrics to InfluxDB, and provides comprehensive visualization through Grafana dashboards. This improves on the limited graphs provided by Enphase with detailed monitoring and historical analysis.
 
-## Grafana Dashboard
-![Grafana Dashboard](assets/images/grafana.png)
+## Architecture
 
-## Enphase Dashboard
-![Enphase Dashboard](assets/images/enphase-graph.png)
+The application runs on Google Kubernetes Engine (GKE) with Tailscale networking for secure access to home network resources:
+
+- **Ingestor Service**: Python application that polls the Enphase Envoy device
+- **InfluxDB**: Time-series database for storing solar metrics
+- **Grafana**: Visualization platform with custom solar dashboard
+- **Tailscale Operator**: Provides secure networking to reach home devices
 
 ## Features
-- Real-time polling of Enphase Envoy API for solar and consumption data
-- Secure token-based authentication with local or Secret Manager storage
-- InfluxDB v2 integration for time-series data storage
-- Optional Grafana dashboards for data visualization
-- Docker Compose support for local development and testing
-- Terraform scripts for provisioning resources on Google Cloud
+
+- **Real-time Monitoring**: Continuous polling of Enphase Envoy API for solar and consumption data
+- **Secure Authentication**: Token-based authentication with Kubernetes secrets
+- **Time-series Storage**: InfluxDB v2 integration optimized for solar metrics
+- **Comprehensive Dashboards**: Custom Grafana dashboard with 9 panels including:
+  - Real-time power flow (solar, load, grid)
+  - Current production and consumption stats
+  - Individual inverter performance
+  - Energy production trends (daily, weekly)
+  - System voltage monitoring
+- **Cloud-native Deployment**: Kubernetes manifests with Terraform infrastructure as code
+- **Secure Networking**: Tailscale mesh networking for home device access
+- **Lifecycle Management**: Kubernetes secrets with proper lifecycle handling
 
 ## Prerequisites
-### Local
-- Raspberry Pi 4+ as a Self Hosted Runner for local deployment 
+
 ### Google Cloud
 - gcloud CLI authenticated and set to your GCP project
 - Terraform v1.5+ installed
-- Service account or user with permissions to create Compute Engine resources and Source Repos
+- GKE API enabled in your project
+- Service account with GKE and Container Registry permissions
+
+### Tailscale
+- Tailscale account with OAuth application configured
+- Subnet router configured on home network (for Envoy access)
+
+### Hardware
+- Enphase Envoy device on local network (192.168.1.x)
 
 

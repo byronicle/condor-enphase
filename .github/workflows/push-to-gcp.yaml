@@ -25,6 +25,8 @@ jobs:
       TF_VAR_enphase_local_token: ${{ secrets.ENPHASE_LOCAL_TOKEN }}
       TF_VAR_envoy_host: ${{ secrets.ENVOY_HOST }}
       TF_VAR_ts_authkey: ${{ secrets.TS_AUTHKEY_CONTAINER}}
+      TF_VAR_tailscale_oauth_client_id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+      TF_VAR_tailscale_oauth_client_secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
       TF_VAR_influxdb_admin_password: ${{ secrets.INFLUXDB_ADMIN_PASSWORD }}
       TF_VAR_influxdb_admin_token: ${{ secrets.INFLUX_ADMIN_TOKEN }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
