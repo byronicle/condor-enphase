@@ -36,8 +36,8 @@ output "grafana_service_name" {
 }
 
 output "grafana_tailscale_access" {
-  value       = "Access Grafana via Tailscale at: grafana-k8s:3000"
-  description = "Access Grafana through Tailscale using the hostname configured in the sidecar"
+  value       = "Access Grafana via Tailscale through the cluster egress"
+  description = "Access Grafana through Tailscale using the cluster egress configuration"
 }
 
 output "secret_names" {
@@ -49,9 +49,8 @@ output "secret_names" {
 
 output "pvc_names" {
   value = {
-    influxdb_data   = kubernetes_persistent_volume_claim.influxdb_data.metadata[0].name
-    grafana_data    = kubernetes_persistent_volume_claim.grafana_data.metadata[0].name
-    tailscale_state = kubernetes_persistent_volume_claim.tailscale_state.metadata[0].name
+    influxdb_data = kubernetes_persistent_volume_claim.influxdb_data.metadata[0].name
+    grafana_data  = kubernetes_persistent_volume_claim.grafana_data.metadata[0].name
   }
   description = "Names of persistent volume claims created"
 }

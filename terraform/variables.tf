@@ -106,3 +106,15 @@ variable "influxdb_admin_token" {
   sensitive   = true
 }
 
+variable "tailscale_oauth_client_id" {
+  type        = string
+  description = "Tailscale OAuth client ID for Kubernetes operator"
+  sensitive   = true
+}
+
+variable "tailscale_oauth_client_secret" {
+  type        = string
+  description = "Tailscale OAuth client secret for Kubernetes operator"
+  sensitive   = true
+}
+

@@ -43,7 +43,7 @@ resource "google_container_cluster" "enphase_cluster" {
 
   # Security configuration
   private_cluster_config {
-    enable_private_nodes    = false  # Keep simple for free tier
+    enable_private_nodes    = false # Keep simple for free tier
     enable_private_endpoint = false
   }
 
@@ -56,10 +56,10 @@ resource "google_container_cluster" "enphase_cluster" {
 
 # Node pool configuration
 resource "google_container_node_pool" "enphase_nodes" {
-  name       = "${var.cluster_name}-nodes-v2"
-  location   = var.zone
-  cluster    = google_container_cluster.enphase_cluster.name
-  
+  name     = "${var.cluster_name}-nodes-v2"
+  location = var.zone
+  cluster  = google_container_cluster.enphase_cluster.name
+
   # Start with minimal nodes for cost
   initial_node_count = 1
 
@@ -80,7 +80,7 @@ resource "google_container_node_pool" "enphase_nodes" {
     machine_type = var.node_machine_type
     disk_size_gb = var.node_disk_size
     disk_type    = "pd-standard"
-    
+
     # Use spot instances for cost savings (optional)
     spot = var.use_spot_instances
 
@@ -94,7 +94,7 @@ resource "google_container_node_pool" "enphase_nodes" {
 
     # Security and resource configuration
     service_account = google_service_account.gke_node_sa.email
-    
+
     # Enable workload identity
     workload_metadata_config {
       mode = "GKE_METADATA"
@@ -134,9 +134,13 @@ resource "google_project_iam_member" "gke_node_sa_roles" {
   for_each = toset([
     "roles/logging.logWriter",
     "roles/monitoring.metricWriter",
-    "roles/monitoring.viewer"
+    "roles/monitoring.viewer",
+    # Needed to pull images from gcr.io
+    "roles/storage.objectViewer",
+    # If image is in Artifact Registry (future-proof)
+    "roles/artifactregistry.reader"
   ])
-  
+
   project = var.project_id
   role    = each.key
   member  = "serviceAccount:${google_service_account.gke_node_sa.email}"
@@ -145,8 +149,98 @@ resource "google_project_iam_member" "gke_node_sa_roles" {
 # Wait for cluster to be fully ready
 resource "time_sleep" "wait_for_cluster" {
   depends_on = [google_container_node_pool.enphase_nodes]
-  
+
   create_duration = "30s"
+}
+
+# Tailscale operator namespace
+resource "kubernetes_namespace" "tailscale" {
+  metadata {
+    name = "tailscale"
+  }
+
+  depends_on = [
+    google_container_node_pool.enphase_nodes,
+    time_sleep.wait_for_cluster
+  ]
+}
+
+# Tailscale operator OAuth secret - managed by Helm
+# The Helm chart will create this secret automatically
+
+# Install Tailscale operator using Helm
+resource "helm_release" "tailscale_operator" {
+  name       = "tailscale-operator"
+  repository = "https://pkgs.tailscale.com/helmcharts"
+  chart      = "tailscale-operator"
+  namespace  = kubernetes_namespace.tailscale.metadata[0].name
+
+  set {
+    name  = "oauth.clientId"
+    value = var.tailscale_oauth_client_id
+  }
+
+  set {
+    name  = "oauth.clientSecret"
+    value = var.tailscale_oauth_client_secret
+  }
+
+  set {
+    name  = "operatorConfig.defaultTags"
+    value = "tag:k8s"
+  }
+
+  set {
+    name  = "operatorConfig.acceptRoutes"
+    value = "true"
+  }
+
+  depends_on = [
+    kubernetes_namespace.tailscale
+  ]
+}
+
+# ProxyClass to enable accepting subnet routes
+resource "kubernetes_manifest" "accept_routes_proxy_class" {
+  manifest = {
+    apiVersion = "tailscale.com/v1alpha1"
+    kind       = "ProxyClass"
+    metadata = {
+      name = "accept-routes"
+    }
+    spec = {
+      tailscale = {
+        acceptRoutes = true
+      }
+    }
+  }
+
+  depends_on = [
+    helm_release.tailscale_operator
+  ]
+}
+
+# Tailscale cluster egress service for home network access behind subnet router
+# This creates a Service that exposes your home network device to the cluster
+resource "kubernetes_service" "home_network_egress" {
+  metadata {
+    name      = "home-network"
+    namespace = kubernetes_namespace.enphase.metadata[0].name
+    annotations = {
+      "tailscale.com/tailnet-ip"  = var.envoy_host
+      "tailscale.com/proxy-class" = "accept-routes"
+    }
+  }
+  spec {
+    external_name = "unused"
+    type          = "ExternalName"
+  }
+
+  depends_on = [
+    helm_release.tailscale_operator,
+    kubernetes_namespace.enphase,
+    kubernetes_manifest.accept_routes_proxy_class
+  ]
 }
 
 # Kubernetes namespace
@@ -162,66 +256,10 @@ resource "kubernetes_namespace" "enphase" {
 }
 
 
-# ServiceAccount for Tailscale
-resource "kubernetes_service_account" "tailscale" {
-  metadata {
-    name      = "tailscale"
-    namespace = kubernetes_namespace.enphase.metadata[0].name
-  }
 
-  lifecycle {
-    ignore_changes = [metadata]
-  }
-}
 
-# Role for Tailscale permissions
-resource "kubernetes_role" "tailscale" {
-  metadata {
-    namespace = kubernetes_namespace.enphase.metadata[0].name
-    name      = "tailscale"
-  }
 
-  rule {
-    api_groups = [""]
-    resources  = ["secrets"]
-    verbs      = ["create", "get", "update", "patch"]
-  }
 
-  rule {
-    api_groups = [""]
-    resources  = ["events"]
-    verbs      = ["create", "get", "patch"]
-  }
-}
-
-# RoleBinding for Tailscale
-resource "kubernetes_role_binding" "tailscale" {
-  metadata {
-    name      = "tailscale"
-    namespace = kubernetes_namespace.enphase.metadata[0].name
-  }
-  role_ref {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "Role"
-    name      = kubernetes_role.tailscale.metadata[0].name
-  }
-  subject {
-    kind      = "ServiceAccount"
-    name      = kubernetes_service_account.tailscale.metadata[0].name
-    namespace = kubernetes_namespace.enphase.metadata[0].name
-  }
-}
-
-# Tailscale state secret (empty, will be populated by Tailscale)
-resource "kubernetes_secret" "tailscale" {
-  metadata {
-    name      = "tailscale"
-    namespace = kubernetes_namespace.enphase.metadata[0].name
-  }
-  
-  type = "Opaque"
-  data = {}
-}
 
 # Kubernetes Secrets
 resource "kubernetes_secret" "enphase_secrets" {
@@ -231,7 +269,7 @@ resource "kubernetes_secret" "enphase_secrets" {
   }
 
   data = {
-    ENPHASE_LOCAL_TOKEN      = var.enphase_local_token
+    ENPHASE_LOCAL_TOKEN     = var.enphase_local_token
     ENVOY_HOST              = var.envoy_host
     TS_AUTHKEY              = var.ts_authkey
     influxdb_admin_password = var.influxdb_admin_password
@@ -294,29 +332,6 @@ resource "kubernetes_persistent_volume_claim" "grafana_data" {
   }
 }
 
-resource "kubernetes_persistent_volume_claim" "tailscale_state" {
-  metadata {
-    name      = "tailscale-state"
-    namespace = kubernetes_namespace.enphase.metadata[0].name
-  }
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = "1Gi"
-      }
-    }
-    storage_class_name = var.storage_class
-  }
-
-  depends_on = [
-    google_container_node_pool.enphase_nodes
-  ]
-
-  timeouts {
-    create = "10m"
-  }
-}
 
 # Note: token_volume is now handled as emptyDir in pod specs
 # since ReadWriteMany is not supported by GKE standard storage classes
@@ -495,13 +510,11 @@ resource "kubernetes_deployment" "grafana" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.tailscale.metadata[0].name
-        
         # Ensure the mounted PVC gets appropriate ownership for grafana (uid 472)
         security_context {
           fs_group = 472
         }
-        
+
         init_container {
           name  = "wait-for-influxdb"
           image = "busybox:1.35"
@@ -544,8 +557,8 @@ resource "kubernetes_deployment" "grafana" {
           }
 
           security_context {
-            run_as_user    = 472
-            run_as_group   = 472
+            run_as_user     = 472
+            run_as_group    = 472
             run_as_non_root = true
           }
 
@@ -561,70 +574,6 @@ resource "kubernetes_deployment" "grafana" {
           }
         }
 
-        # Tailscale sidecar
-        container {
-          image = "tailscale/tailscale:latest"
-          name  = "tailscale"
-
-          env {
-            name = "TS_AUTHKEY"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.enphase_secrets.metadata[0].name
-                key  = "TS_AUTHKEY"
-              }
-            }
-          }
-
-          env {
-            name  = "TS_STATE_DIR"
-            value = "/var/lib/tailscale"
-          }
-
-          env {
-            name  = "TS_HOSTNAME"
-            value = "grafana-k8s"
-          }
-
-          env {
-            name  = "TS_EXTRA_ARGS"
-            value = "--accept-routes"
-          }
-
-          env {
-            name = "POD_NAME"
-            value_from {
-              field_ref {
-                field_path = "metadata.name"
-              }
-            }
-          }
-
-          env {
-            name = "POD_UID"
-            value_from {
-              field_ref {
-                field_path = "metadata.uid"
-              }
-            }
-          }
-
-          security_context {
-            capabilities {
-              add = ["NET_ADMIN"]
-            }
-          }
-
-          volume_mount {
-            name       = "tailscale-state"
-            mount_path = "/var/lib/tailscale"
-          }
-
-          volume_mount {
-            name       = "dev-net-tun"
-            mount_path = "/dev/net/tun"
-          }
-        }
 
         volume {
           name = "grafana-data"
@@ -633,26 +582,12 @@ resource "kubernetes_deployment" "grafana" {
           }
         }
 
-        volume {
-          name = "tailscale-state"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.tailscale_state.metadata[0].name
-          }
-        }
-
-        volume {
-          name = "dev-net-tun"
-          host_path {
-            path = "/dev/net/tun"
-          }
-        }
       }
     }
   }
 
   depends_on = [
     kubernetes_persistent_volume_claim.grafana_data,
-    kubernetes_persistent_volume_claim.tailscale_state,
     kubernetes_service.influxdb,
     time_sleep.wait_for_cluster
   ]
@@ -663,11 +598,16 @@ resource "kubernetes_deployment" "grafana" {
   }
 }
 
-# Grafana Service
+# Grafana Service with Tailscale ingress
 resource "kubernetes_service" "grafana" {
   metadata {
     name      = "grafana"
     namespace = kubernetes_namespace.enphase.metadata[0].name
+    annotations = {
+      "tailscale.com/expose"   = "true"
+      "tailscale.com/hostname" = "grafana-k8s-cluster"
+      "tailscale.com/tags"     = "tag:k8s"
+    }
   }
   spec {
     selector = {
@@ -677,7 +617,12 @@ resource "kubernetes_service" "grafana" {
       port        = 3000
       target_port = 3000
     }
+    type = "ClusterIP"
   }
+
+  depends_on = [
+    helm_release.tailscale_operator
+  ]
 }
 
 # Ingestor Deployment
@@ -707,8 +652,6 @@ resource "kubernetes_deployment" "ingestor" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.tailscale.metadata[0].name
-        
         init_container {
           name  = "wait-for-influxdb"
           image = "busybox:1.35"
@@ -752,13 +695,8 @@ resource "kubernetes_deployment" "ingestor" {
           }
 
           env {
-            name = "ENVOY_HOST"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.enphase_secrets.metadata[0].name
-                key  = "ENVOY_HOST"
-              }
-            }
+            name  = "ENVOY_HOST"
+            value = "home-network.${kubernetes_namespace.enphase.metadata[0].name}.svc.cluster.local"
           }
 
           env {
@@ -770,84 +708,10 @@ resource "kubernetes_deployment" "ingestor" {
               }
             }
           }
+
         }
 
-        # Tailscale sidecar for ingestor to reach home network
-        container {
-          image = "tailscale/tailscale:latest"
-          name  = "tailscale-ingestor"
 
-          env {
-            name = "TS_AUTHKEY"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.enphase_secrets.metadata[0].name
-                key  = "TS_AUTHKEY"
-              }
-            }
-          }
-
-          env {
-            name  = "TS_STATE_DIR"
-            value = "/var/lib/tailscale"
-          }
-
-          env {
-            name  = "TS_HOSTNAME"
-            value = "ingestor-k8s"
-          }
-
-          env {
-            name  = "TS_EXTRA_ARGS"
-            value = "--accept-routes"
-          }
-
-          env {
-            name = "POD_NAME"
-            value_from {
-              field_ref {
-                field_path = "metadata.name"
-              }
-            }
-          }
-
-          env {
-            name = "POD_UID"
-            value_from {
-              field_ref {
-                field_path = "metadata.uid"
-              }
-            }
-          }
-
-          security_context {
-            capabilities {
-              add = ["NET_ADMIN"]
-            }
-          }
-
-          volume_mount {
-            name       = "tailscale-ingestor-state"
-            mount_path = "/var/lib/tailscale"
-          }
-
-          volume_mount {
-            name       = "dev-net-tun"
-            mount_path = "/dev/net/tun"
-          }
-        }
-
-        volume {
-          name = "tailscale-ingestor-state"
-          empty_dir {}
-        }
-
-        volume {
-          name = "dev-net-tun"
-          host_path {
-            path = "/dev/net/tun"
-          }
-        }
       }
     }
   }
