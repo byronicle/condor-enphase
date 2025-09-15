@@ -39,6 +39,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # First‑party
 # ---------------------------------------------------------------------------
 from enphase_client import EnphaseClient
+import httpx
 from influx_writer import InfluxWriter
 
 # ---------------------------------------------------------------------------
@@ -131,11 +132,23 @@ def ingest_loop() -> None:
     try:
         while True:
             # 1️⃣  Production & consumption energy -----------------
-            try:
-                pdm = enphase.get_production_data_local()
-            except (requests.RequestException, ValueError) as exc:
-                print(f"pdm/energy error: {exc}")
-                pdm = {}
+            # Wrapper to tolerate transient gateway reachability issues (e.g. tailnet route)
+            attempt = 0
+            max_attempts = 5
+            backoff = 2
+            while True:
+                try:
+                    pdm = enphase.get_production_data_local()
+                    break
+                except (requests.RequestException, httpx.RequestError, ValueError) as exc:
+                    attempt += 1
+                    if attempt >= max_attempts:
+                        print(f"pdm/energy error (giving up after {attempt} attempts): {exc}")
+                        pdm = {}
+                        break
+                    sleep_for = backoff * attempt
+                    print(f"pdm/energy error (attempt {attempt}/{max_attempts}): {exc}; retrying in {sleep_for}s")
+                    time.sleep(sleep_for)
             meta = pdm.get("meta", {})
             base_ts = _epoch_to_dt(meta.get("last_report_at"))
             for cat, cat_data in pdm.items():

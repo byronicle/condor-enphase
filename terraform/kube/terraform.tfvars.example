@@ -1,0 +1,29 @@
+# Copy this file to terraform.tfvars and fill in your values
+
+# GCP Configuration
+project_id = "your-gcp-project-id"
+region     = "us-west1"
+zone       = "us-west1-a"
+
+# Cluster Configuration
+cluster_name        = "enphase-cluster"
+node_machine_type   = "e2-micro"      # Free tier eligible
+node_disk_size      = 20              # GB
+use_spot_instances  = false           # Set to true for more cost savings (may cause interruptions)
+
+# Storage Configuration
+storage_class         = "standard"    # or "standard-rwo" for GKE
+influxdb_storage_size = "10Gi"
+grafana_storage_size  = "5Gi"
+
+# Application Configuration
+ingestor_image = "gcr.io/your-project/enphase-ingestor:latest"
+namespace      = "enphase"
+
+# Secrets (sensitive - keep secure)
+# These will be stored directly in Kubernetes secrets
+enphase_local_token     = "your-enphase-token"
+envoy_host              = "your-envoy-host"
+ts_authkey              = "your-tailscale-auth-key"
+influxdb_admin_password = "your-influxdb-password"
+influxdb_admin_token    = "your-influxdb-token"

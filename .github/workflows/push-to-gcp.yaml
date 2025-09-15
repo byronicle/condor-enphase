@@ -20,6 +20,15 @@ jobs:
       TF_VAR_project_number: ${{ secrets.GCP_PROJECT_NUMBER }}
       TF_VAR_github_pat: ${{ secrets.GH_PAT }}
       TF_VAR_installation_id: ${{ secrets.GH_GCP_APP_INSTALLATION_ID }}
+      TF_VAR_github_deploy_key: ${{ secrets.GH_DEPLOY_KEY }}
+      TF_VAR_node_machine_type: e2-small
+      TF_VAR_enphase_local_token: ${{ secrets.ENPHASE_LOCAL_TOKEN }}
+      TF_VAR_envoy_host: ${{ secrets.ENVOY_HOST }}
+      TF_VAR_ts_authkey: ${{ secrets.TS_AUTHKEY_CONTAINER}}
+      TF_VAR_tailscale_oauth_client_id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+      TF_VAR_tailscale_oauth_client_secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
+      TF_VAR_influxdb_admin_password: ${{ secrets.INFLUXDB_ADMIN_PASSWORD }}
+      TF_VAR_influxdb_admin_token: ${{ secrets.INFLUX_ADMIN_TOKEN }}
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
       TF_STATE_PREFIX: terraform/state
     steps:
@@ -44,12 +53,26 @@ jobs:
           terraform_version: 1.5.0
 
       - name: Terraform Init
-        run: |
-          terraform init -reconfigure \
-            -backend-config="bucket=${TF_STATE_BUCKET}" \
-            -backend-config="prefix=${TF_STATE_PREFIX}"
+        run: terraform init
         working-directory: terraform
 
-      - name: Terraform Apply (Cloud Source Repo)
+      - name: Configure Docker to use gcloud as credential helper
+        run: gcloud auth configure-docker gcr.io
+
+      - name: Build Docker image
+        run: |
+          docker build -t gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:${{ github.sha }} .
+          docker build -t gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:${{ github.sha }}
+          docker push gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:latest
+
+      - name: Update Terraform variable with new image
+        run: |
+          echo "TF_VAR_ingestor_image=gcr.io/${{ env.GCP_PROJECT }}/enphase-ingestor:${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Terraform Apply (GKE Infrastructure)
         run: terraform apply --auto-approve
         working-directory: terraform

@@ -1,27 +1,9 @@
-// Root-level Terraform variables
-variable "project_id" {
-  type        = string
-  description = "The GCP project ID"
-}
-
-variable "project_number" {
-  type        = string
-  description = "The GCP project number"
-}
-
-variable "region" {
-  type        = string
-  description = "The GCP region"
-  default     = "us-west1"
-}
-
 variable "zone" {
   type        = string
-  description = "The GCP zone"
+  description = "GCP zone for resources"
   default     = "us-west1-a"
 }
 
-// Kubernetes cluster configuration
 variable "cluster_name" {
   type        = string
   description = "GKE cluster name"
@@ -31,7 +13,7 @@ variable "cluster_name" {
 variable "node_machine_type" {
   type        = string
   description = "Machine type for GKE nodes"
-  default     = "e2-micro"
+  default     = "e2-small"
 }
 
 variable "node_disk_size" {
@@ -44,6 +26,23 @@ variable "use_spot_instances" {
   type        = bool
   description = "Use spot instances for cost savings (may cause interruptions)"
   default     = false
+}
+
+variable "project_id" {
+  type        = string
+  description = "GCP project ID for the instance"
+}
+
+variable "region" {
+  type        = string
+  description = "GCP region for the instance"
+  default     = "us-west1"
+}
+
+variable "ingestor_image" {
+  type        = string
+  description = "Docker image for the ingestor application"
+  default     = "gcr.io/your-project/enphase-ingestor:latest"
 }
 
 variable "storage_class" {
@@ -64,18 +63,7 @@ variable "grafana_storage_size" {
   default     = "5Gi"
 }
 
-variable "ingestor_image" {
-  type        = string
-  description = "Docker image for the ingestor application (e.g., gcr.io/your-project-id/enphase-ingestor:latest)"
-}
-
-variable "namespace" {
-  type        = string
-  description = "Kubernetes namespace for resources"
-  default     = "enphase"
-}
-
-// Secret inputs for kube module
+// GCP secrets variables
 variable "enphase_local_token" {
   type        = string
   description = "Enphase local token"
@@ -118,3 +106,8 @@ variable "tailscale_oauth_client_secret" {
   sensitive   = true
 }
 
+variable "namespace" {
+  type        = string
+  description = "Kubernetes namespace for resources"
+  default     = "enphase"
+}

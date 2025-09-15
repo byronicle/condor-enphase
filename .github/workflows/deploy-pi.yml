@@ -26,7 +26,7 @@ jobs:
         run: |
           mkdir -p secrets
           echo "${{ secrets.INFLUXDB_ADMIN_PASSWORD }}" > secrets/influxdb_admin_password.txt
-          echo "${{ secrets.INFLUXDB_ADMIN_TOKEN }}"    > secrets/influxdb_admin_token.txt
+          echo "${{ secrets.INFLUX_ADMIN_TOKEN }}"    > secrets/influxdb_admin_token.txt
         shell: bash
       
       - name: Write application env file
