@@ -211,7 +211,19 @@ class EnphaseClient:  # pylint: disable=too-many-instance-attributes
         resp = self.session.get(endpoint, params=params,
                                 headers=headers, timeout=self.timeout)
         resp.raise_for_status()
-        return resp.json()
+
+        # Handle UTF-8 decode errors from Enphase Envoy firmware bugs
+        try:
+            return resp.json()
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            # Try to decode with error replacement to salvage partial data
+            try:
+                text = resp.content.decode('utf-8', errors='replace')
+                return json.loads(text)
+            except json.JSONDecodeError:
+                raise ValueError(
+                    f"Failed to decode response from {endpoint}: {exc}"
+                ) from exc
 
     # ------------------------------------------------------------------
     # Cloud API wrappers
