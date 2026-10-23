@@ -181,17 +181,26 @@ class EnphaseClient:  # pylint: disable=too-many-instance-attributes
             json.dump(payload, fp)
 
     def _load_token(self) -> None:
-        """Load token JSON from *token_path* if it exists."""
-        if not self.token_path.exists():
-            return
-        try:
-            payload = json.loads(self.token_path.read_text(encoding="utf-8"))
-            self.token_data = payload.get("token_data")
-            self.token_obtained_at = payload.get("token_obtained_at")
-        except (json.JSONDecodeError, OSError):
-            # Corrupt file – ignore and start fresh
-            self.token_data = None
-            self.token_obtained_at = None
+        """Load token JSON from *token_path*, else seed from the environment.
+
+        The saved file wins because Enphase rotates the refresh token on every
+        refresh. Without it, ``ENPHASE_REFRESH_TOKEN`` seeds a token with no
+        access token, so the first API call triggers a refresh.
+        """
+        if self.token_path.exists():
+            try:
+                payload = json.loads(
+                    self.token_path.read_text(encoding="utf-8"))
+                self.token_data = payload.get("token_data")
+                self.token_obtained_at = payload.get("token_obtained_at")
+            except (json.JSONDecodeError, OSError):
+                # Corrupt file – ignore and start fresh
+                self.token_data = None
+                self.token_obtained_at = None
+        if not self.token_data:
+            if refresh_token := os.getenv("ENPHASE_REFRESH_TOKEN"):
+                self.token_data = {"refresh_token": refresh_token}
+                self.token_obtained_at = None
 
     # ------------------------------------------------------------------
     # Low‑level HTTP helper

@@ -161,7 +161,20 @@ This option runs everything locally on a Raspberry Pi, ideal for users who prefe
    
    # Optional: Tailscale for remote access
    TS_AUTHKEY=your_tailscale_authkey  # Optional
+
+   # Optional: Enphase Cloud API v4 (EnphaseClient without a gateway IP)
+   ENPHASE_API_KEY=your_app_api_key
+   ENPHASE_CLIENT_ID=your_app_client_id
+   ENPHASE_CLIENT_SECRET=your_app_client_secret
+   ENPHASE_REDIRECT_URI=https://api.enphaseenergy.com/oauth/redirect_uri
+   ENPHASE_REFRESH_TOKEN=your_refresh_token  # Seeds auth when no token file exists
+   ENPHASE_TOKEN_PATH=./enphase_token.json   # Where rotated tokens are saved
    ```
+
+   `ENPHASE_REFRESH_TOKEN` comes from a one-time OAuth authorization (see
+   `EnphaseClient.get_authorize_url()` and `fetch_token()`). It is only read
+   when `ENPHASE_TOKEN_PATH` has no saved token; after that the client uses
+   and rotates the token in that file. Refresh tokens last about a month.
 
 3. **Start services**
    ```bash
